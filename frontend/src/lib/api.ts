@@ -415,6 +415,34 @@ export async function aiCaption(input: { content_idea: string; platform: string;
   }
 }
 
+export type ContentPlanItem = {
+  day: number
+  platform: string
+  title: string
+  angle: string
+  caption: string
+  cta?: string
+  hashtags?: string[]
+  time?: string
+}
+
+export type ContentPlanResponse = {
+  items: ContentPlanItem[]
+}
+
+export async function aiContentPlan(input: {
+  client_id: string
+  horizon_days?: number
+  platforms?: string[]
+}): Promise<ContentPlanResponse> {
+  try {
+    const res = await http.post<ContentPlanResponse>('/api/v1/ai/content-plan', input)
+    return res.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
 export async function aiHashtags(input: { caption: string; niche: string }): Promise<AIHashtagsResponse> {
   try {
     const res = await http.post<AIHashtagsResponse>('/api/v1/ai/hashtags', input)

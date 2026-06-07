@@ -68,6 +68,7 @@ func NewRouter(cfg config.Config, gormDB *gorm.DB) *gin.Engine {
 				admin.GET("/calendar/posts", postsHandler.CalendarPosts)
 				admin.POST("/ai/caption", aiHandler.Caption)
 				admin.POST("/ai/hashtags", aiHandler.Hashtags)
+				admin.POST("/ai/content-plan", aiHandler.ContentPlan)
 				admin.POST("/competitor/analyze", competitorHandler.Analyze)
 				admin.POST("/offline/campaigns", offlineHandler.CreateCampaign)
 				admin.GET("/analytics/clients/:id", analyticsHandler.ClientAnalytics)

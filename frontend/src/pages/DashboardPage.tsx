@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom'
 
 import {
   aiCaption,
+  aiContentPlan,
   analyticsDashboard,
   connectAccount,
   competitorAnalyze,
@@ -27,6 +28,7 @@ import {
   updateClient,
   type CalendarEvent,
   type Client,
+  type ContentPlanItem,
   type Post,
   type ReportListItem,
 } from '../lib/api'
@@ -732,6 +734,8 @@ function AmbientPanel({
           <span key={i} className="dash-ambient-particle" style={{ '--i': i } as CSSProperties} />
         ))}
       </div>
+      <div className="dash-ambient-holo" aria-hidden="true" />
+      <div className="dash-ambient-sheen" aria-hidden="true" />
       <div className="dash-ambient-grid">
         <div className="dash-ambient-radar" aria-hidden="true">
           <div className="dash-ambient-ring" />
@@ -756,7 +760,7 @@ type TerminalContext = {
   clientName: string
   industry: string
   location: string
-  mode: 'competitor' | 'offline'
+  mode: 'competitor' | 'offline' | 'plan'
 }
 
 function safeJSONStringify(value: unknown): string {
@@ -844,7 +848,9 @@ function TerminalPanel({
     const step =
       context.mode === 'competitor'
         ? ['enumerating competitors', 'capturing offers', 'mapping channels', 'scoring opportunities', 'writing quick wins'][tick % 5]
-        : ['parsing brief', 'extracting assets', 'detecting touchpoints', 'building roadmap', 'ranking activations'][tick % 5]
+        : context.mode === 'offline'
+          ? ['parsing brief', 'extracting assets', 'detecting touchpoints', 'building roadmap', 'ranking activations'][tick % 5]
+          : ['compiling signals', 'drafting plan items', 'balancing angles', 'packing captions', 'finalizing schedule'][tick % 5]
     return `[${new Date().toLocaleTimeString('id-ID', { hour12: false })}] RUN      :: ${step}${d} ${f}`
   }, [context.mode, running, tick])
 
@@ -1528,6 +1534,24 @@ function ClientIntelModal({
   const [compResult, setCompResult] = useState<unknown>(null)
   const [compRunSeq, setCompRunSeq] = useState(0)
 
+  const [planDays, setPlanDays] = useState(7)
+  const [planPlatform, setPlanPlatform] = useState<'facebook' | 'x' | 'tiktok'>('facebook')
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planError, setPlanError] = useState<string | null>(null)
+  const [planItems, setPlanItems] = useState<ContentPlanItem[] | null>(null)
+  const [planRunSeq, setPlanRunSeq] = useState(0)
+  const [planStartDate, setPlanStartDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 1)
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  })
+  const [planStartTime, setPlanStartTime] = useState('10:00')
+  const [planScheduling, setPlanScheduling] = useState(false)
+  const [planScheduleError, setPlanScheduleError] = useState<string | null>(null)
+
   const [offlineFile, setOfflineFile] = useState<File | null>(null)
   const [offlineLoading, setOfflineLoading] = useState(false)
   const [offlineError, setOfflineError] = useState<string | null>(null)
@@ -1597,6 +1621,82 @@ function ClientIntelModal({
       toast.push({ kind: 'error', title: 'Gagal download PDF', message: msg })
     } finally {
       setPdfLoading(false)
+    }
+  }
+
+  function buildPostContentFromPlanItem(it: ContentPlanItem): string {
+    const parts: string[] = []
+    if (it.caption) parts.push(it.caption.trim())
+    const cta = (it.cta ?? '').trim()
+    if (cta && !parts.join('\n').includes(cta)) parts.push(cta)
+    const tags = (it.hashtags ?? []).map((t) => String(t).trim()).filter(Boolean)
+    if (tags.length) parts.push(tags.join(' '))
+    return parts.filter(Boolean).join('\n\n').trim()
+  }
+
+  function computeExecuteAtISO(day: number, timeStr: string): string | null {
+    const base = String(planStartDate || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return null
+    const time = String(timeStr || '').trim()
+    const m = /^(\d{2}):(\d{2})$/.exec(time)
+    if (!m) return null
+    const hh = Number(m[1])
+    const mm = Number(m[2])
+    if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null
+    const d = new Date(`${base}T00:00:00`)
+    if (Number.isNaN(d.getTime())) return null
+    d.setDate(d.getDate() + Math.max(0, day - 1))
+    d.setHours(hh, mm, 0, 0)
+    return d.toISOString()
+  }
+
+  async function generatePlan() {
+    if (!client) return
+    setPlanRunSeq((v) => v + 1)
+    setPlanLoading(true)
+    setPlanError(null)
+    setPlanScheduleError(null)
+    setPlanItems(null)
+    try {
+      const res = await aiContentPlan({ client_id: client.id, horizon_days: planDays, platforms: [planPlatform] })
+      const items = (res.items ?? []).slice(0, planDays)
+      setPlanItems(items)
+      toast.push({ kind: 'success', title: 'Content plan siap' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal bikin content plan'
+      setPlanError(msg)
+      toast.push({ kind: 'error', title: 'Content plan', message: msg })
+    } finally {
+      setPlanLoading(false)
+    }
+  }
+
+  async function createScheduledPostsFromPlan() {
+    if (!client) return
+    if (!planItems || planItems.length === 0) return
+    setPlanScheduling(true)
+    setPlanScheduleError(null)
+    try {
+      for (const it of planItems) {
+        const platform = String(it.platform || '').toLowerCase().trim()
+        if (platform === 'instagram') {
+          throw new Error('Instagram butuh media. Pilih platform facebook/x/tiktok untuk auto-schedule.')
+        }
+        const executeAt = computeExecuteAtISO(it.day, (it.time ?? planStartTime) || planStartTime)
+        if (!executeAt) throw new Error('Start date/time tidak valid')
+        const content = buildPostContentFromPlanItem(it)
+        if (!content) throw new Error('Plan item kosong')
+        const created = await createPost({ client_id: client.id, content, platforms: [platform] })
+        await schedulePost(created.id, executeAt)
+      }
+      toast.push({ kind: 'success', title: 'Posts terjadwal', message: `Total ${planItems.length} post` })
+      onDidMutate()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal schedule posts'
+      setPlanScheduleError(msg)
+      toast.push({ kind: 'error', title: 'Schedule posts', message: msg })
+    } finally {
+      setPlanScheduling(false)
     }
   }
 
@@ -1753,6 +1853,90 @@ function ClientIntelModal({
                       }}
                     />
                   ) : null}
+
+                  <div className="dash-form-card" style={{ marginTop: 12 }}>
+                    <div className="dash-segment-title">Convert to Plan</div>
+                    {planError ? <DashNotice {...prettyErrorMessage(planError)} /> : null}
+                    {planScheduleError ? <DashNotice {...prettyErrorMessage(planScheduleError)} /> : null}
+                    <div className="dash-actions" style={{ alignItems: 'end' }}>
+                      <label className="field" style={{ minWidth: 160 }}>
+                        <span>Horizon</span>
+                        <select value={String(planDays)} onChange={(e) => setPlanDays(Number(e.target.value))}>
+                          <option value="7">7 hari</option>
+                          <option value="14">14 hari</option>
+                        </select>
+                      </label>
+                      <label className="field" style={{ minWidth: 170 }}>
+                        <span>Platform</span>
+                        <select
+                          value={planPlatform}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            if (v === 'facebook' || v === 'x' || v === 'tiktok') setPlanPlatform(v)
+                          }}
+                        >
+                          <option value="facebook">facebook</option>
+                          <option value="x">x</option>
+                          <option value="tiktok">tiktok</option>
+                        </select>
+                      </label>
+                      <label className="field" style={{ minWidth: 160 }}>
+                        <span>Start Date</span>
+                        <input type="date" value={planStartDate} onChange={(e) => setPlanStartDate(e.target.value)} />
+                      </label>
+                      <label className="field" style={{ minWidth: 140 }}>
+                        <span>Start Time</span>
+                        <input type="time" value={planStartTime} onChange={(e) => setPlanStartTime(e.target.value)} />
+                      </label>
+                      <button
+                        type="button"
+                        className="dash-small-btn"
+                        disabled={planLoading || !industry.trim()}
+                        onClick={() => void generatePlan()}
+                      >
+                        {planLoading ? 'Generating...' : 'Generate Plan'}
+                      </button>
+                      <button
+                        type="button"
+                        className="dash-small-btn"
+                        disabled={planScheduling || !planItems || planItems.length === 0}
+                        onClick={() => void createScheduledPostsFromPlan()}
+                      >
+                        {planScheduling ? 'Scheduling...' : 'Create & Schedule'}
+                      </button>
+                    </div>
+
+                    {planLoading || planItems || planError ? (
+                      <TerminalPanel
+                        seq={planRunSeq}
+                        title="CONTENT PLAN"
+                        running={planLoading}
+                        error={planError}
+                        data={planItems ? { items: planItems } : null}
+                        context={{
+                          clientName: client.name,
+                          industry: industry.trim() || '-',
+                          location: location.trim() || '-',
+                          mode: 'plan',
+                        }}
+                      />
+                    ) : null}
+
+                    {planItems && planItems.length ? (
+                      <div className="dash-mini-list" style={{ marginTop: 10 }}>
+                        {planItems.map((it) => (
+                          <div key={`${it.day}-${it.platform}`} className="dash-mini-item">
+                            <div className="dash-mini-name">
+                              Day {String(it.day)} · {String(it.platform)} · {String(it.time ?? planStartTime)}
+                            </div>
+                            <div className="dash-mini-meta" style={{ whiteSpace: 'pre-wrap' }}>
+                              {it.title}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 
