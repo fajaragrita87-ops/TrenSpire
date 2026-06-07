@@ -59,6 +59,7 @@ func NewRouter(cfg config.Config, gormDB *gorm.DB) *gin.Engine {
 				admin.POST("/clients", clientsHandler.CreateClient)
 				admin.GET("/clients", clientsHandler.ListClients)
 				admin.PATCH("/clients/:id", clientsHandler.UpdateClient)
+				admin.GET("/clients/:id/timeline", clientsHandler.Timeline)
 				admin.POST("/accounts/:platform/connect", accountsHandler.Connect)
 				admin.GET("/accounts", accountsHandler.List)
 				admin.POST("/posts", postsHandler.CreatePost)

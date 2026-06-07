@@ -326,6 +326,24 @@ export async function updateClient(
   }
 }
 
+export type ClientTimelineEvent = {
+  kind: string
+  title: string
+  created_at: string
+  meta?: Record<string, unknown>
+}
+
+export async function clientTimeline(clientId: string, input?: { limit?: number }): Promise<ClientTimelineEvent[]> {
+  try {
+    const params: Record<string, string | number> = {}
+    if (input?.limit) params.limit = input.limit
+    const res = await http.get<{ data: ClientTimelineEvent[] }>(`/api/v1/clients/${clientId}/timeline`, { params })
+    return res.data.data ?? []
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
 export async function createReport(
   clientId: string,
   input?: { start_date?: string; end_date?: string },

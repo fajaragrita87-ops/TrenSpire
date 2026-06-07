@@ -13,6 +13,7 @@ import {
   aiCaption,
   aiContentPlan,
   analyticsDashboard,
+  clientTimeline,
   connectAccount,
   competitorAnalyze,
   createClient,
@@ -29,6 +30,7 @@ import {
   type CalendarEvent,
   type Client,
   type ContentPlanItem,
+  type ClientTimelineEvent,
   type Post,
   type ReportListItem,
 } from '../lib/api'
@@ -1521,7 +1523,7 @@ function ClientIntelModal({
   onDidMutate: () => void
 }) {
   const toast = useToast()
-  const [tab, setTab] = useState<'profile' | 'competitor' | 'offline'>(() => initialTab)
+  const [tab, setTab] = useState<'profile' | 'competitor' | 'offline' | 'timeline'>(() => initialTab)
 
   const [industry, setIndustry] = useState(() => client?.industry ?? '')
   const [location, setLocation] = useState(() => client?.location ?? '')
@@ -1558,6 +1560,11 @@ function ClientIntelModal({
   const [offlineResult, setOfflineResult] = useState<unknown>(null)
   const [offlineRunSeq, setOfflineRunSeq] = useState(0)
 
+  const [timelineLoading, setTimelineLoading] = useState(false)
+  const [timelineError, setTimelineError] = useState<string | null>(null)
+  const [timelineRows, setTimelineRows] = useState<ClientTimelineEvent[]>([])
+  const [timelineSeq, setTimelineSeq] = useState(0)
+
   const [pdfLoading, setPdfLoading] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
 
@@ -1588,6 +1595,31 @@ function ClientIntelModal({
       }
     })()
   }, [autoGenerate, client, compLoading, compResult, industry, initialTab, onDidMutate, toast])
+
+  useEffect(() => {
+    if (!client) return
+    if (tab !== 'timeline') return
+    let cancelled = false
+    void (async () => {
+      setTimelineLoading(true)
+      setTimelineError(null)
+      try {
+        const rows = await clientTimeline(client.id, { limit: 80 })
+        if (cancelled) return
+        setTimelineRows(rows)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Gagal load timeline'
+        if (cancelled) return
+        setTimelineError(msg)
+        toast.push({ kind: 'error', title: 'Timeline', message: msg })
+      } finally {
+        if (!cancelled) setTimelineLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [client, tab, timelineSeq, toast])
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow
@@ -1753,6 +1785,13 @@ function ClientIntelModal({
                   onClick={() => setTab('offline')}
                 >
                   Offline Campaign
+                </button>
+                <button
+                  type="button"
+                  className={tab === 'timeline' ? 'dash-lab-tab active' : 'dash-lab-tab'}
+                  onClick={() => setTab('timeline')}
+                >
+                  Timeline
                 </button>
               </div>
 
@@ -1999,6 +2038,64 @@ function ClientIntelModal({
                       }}
                     />
                   ) : null}
+                </div>
+              ) : null}
+
+              {tab === 'timeline' ? (
+                <div className="dash-lab-panel">
+                  {timelineError ? <DashNotice {...prettyErrorMessage(timelineError)} /> : null}
+                  <div className="dash-actions">
+                    <button
+                      type="button"
+                      className="dash-small-btn"
+                      disabled={timelineLoading}
+                      onClick={() => {
+                        setTimelineSeq((v) => v + 1)
+                      }}
+                    >
+                      {timelineLoading ? 'Loading...' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  {timelineLoading ? (
+                    <div className="dash-skeleton-list" aria-busy="true">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="dash-skeleton-row">
+                          <div className="skeleton skeleton-line" />
+                          <div className="skeleton skeleton-line short" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : timelineRows.length === 0 ? (
+                    <DashNotice title="Belum ada aktivitas" detail="Generate Competitor Insight, Offline Campaign, atau Report untuk mulai membentuk timeline." />
+                  ) : (
+                    <div className="dash-mini-list">
+                      {timelineRows.map((e, i) => {
+                        const t = new Date(e.created_at)
+                        const timeLabel = Number.isNaN(t.getTime())
+                          ? String(e.created_at)
+                          : t.toLocaleString('id-ID', { hour12: false })
+                        const meta = e.meta ? safeJSONStringify(e.meta) : ''
+                        const metaShort = meta.length > 480 ? meta.slice(0, 480) + '…' : meta
+                        return (
+                          <div key={`${e.kind}-${e.created_at}-${i}`} className="dash-mini-item">
+                            <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                              <span className="dash-badge">{String(e.kind).toUpperCase()}</span>
+                              <span>{e.title}</span>
+                              <span style={{ marginLeft: 'auto' }} className="muted">
+                                {timeLabel}
+                              </span>
+                            </div>
+                            {metaShort ? (
+                              <div className="dash-mini-meta" style={{ whiteSpace: 'pre-wrap' }}>
+                                {metaShort}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : null}
             </div>
