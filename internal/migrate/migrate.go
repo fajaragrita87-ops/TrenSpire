@@ -16,6 +16,16 @@ func Run(gormDB *gorm.DB) error {
 		&models.AgencyUser{},
 		&models.Client{},
 		&models.SocialAccount{},
+		&models.Post{},
+		&models.PostMedia{},
+		&models.Schedule{},
+		&models.AIGeneration{},
+		&models.PublishAttempt{},
+		&models.AnalyticsDaily{},
+		&models.AnalyticsPost{},
+		&models.AnalyticsAlert{},
+		&models.Report{},
+		&models.CompetitorAnalysis{},
+		&models.OfflineCampaign{},
 	)
 }
-

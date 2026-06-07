@@ -6,9 +6,12 @@ import (
 	"trendspire/internal/config"
 	"trendspire/internal/db"
 	"trendspire/internal/migrate"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load()
 	cfg := config.Load()
 
 	gormDB, err := db.OpenPostgres(cfg.DB)
@@ -22,4 +25,3 @@ func main() {
 
 	log.Printf("migrate ok")
 }
-

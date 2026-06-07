@@ -2,9 +2,12 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { login } from '../lib/api'
+import { useAuthStore } from '../lib/auth'
+import { useToast } from '../lib/toast'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const toast = useToast()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -15,10 +18,19 @@ export default function LoginPage() {
     setIsSubmitting(true)
     setError(null)
     try {
-      await login(email.trim().toLowerCase(), password)
+      const res = await login(email.trim().toLowerCase(), password)
+      useAuthStore.getState().setSession({
+        accessToken: res.access_token,
+        refreshToken: res.refresh_token,
+        user: res.user,
+        agency: res.agency,
+      })
+      toast.push({ kind: 'success', title: 'Login berhasil' })
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login gagal')
+      const msg = err instanceof Error ? err.message : 'Login gagal'
+      setError(msg)
+      toast.push({ kind: 'error', title: 'Login gagal', message: msg })
     } finally {
       setIsSubmitting(false)
     }

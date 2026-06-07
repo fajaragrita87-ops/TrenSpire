@@ -25,4 +25,3 @@ func OpenPostgres(cfg config.PostgresConfig) (*gorm.DB, error) {
 
 	return gorm.Open(postgres.Open(dsn), &gorm.Config{})
 }
-

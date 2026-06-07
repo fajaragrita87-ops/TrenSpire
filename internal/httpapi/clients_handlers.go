@@ -9,6 +9,7 @@ import (
 	"trendspire/internal/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -24,6 +25,8 @@ type createClientRequest struct {
 	Name            string                   `json:"name" binding:"required"`
 	LogoURL         string                   `json:"logo_url"`
 	ReportBrandName string                   `json:"report_brand_name"`
+	Industry        string                   `json:"industry"`
+	Location        string                   `json:"location"`
 	SocialAccounts  []createSocialAccountReq `json:"social_accounts"`
 }
 
@@ -35,12 +38,22 @@ type createSocialAccountReq struct {
 	ConnectedAt       *time.Time `json:"connected_at"`
 }
 
+type updateClientRequest struct {
+	Name            string `json:"name"`
+	LogoURL         string `json:"logo_url"`
+	ReportBrandName string `json:"report_brand_name"`
+	Industry        string `json:"industry"`
+	Location        string `json:"location"`
+}
+
 type clientDTO struct {
 	ID              string             `json:"id"`
 	AgencyID        string             `json:"agency_id"`
 	Name            string             `json:"name"`
 	LogoURL         string             `json:"logo_url,omitempty"`
 	ReportBrandName string             `json:"report_brand_name,omitempty"`
+	Industry        string             `json:"industry,omitempty"`
+	Location        string             `json:"location,omitempty"`
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedAt       time.Time          `json:"updated_at"`
 	SocialAccounts  []socialAccountDTO `json:"social_accounts,omitempty"`
@@ -52,6 +65,7 @@ type socialAccountDTO struct {
 	Platform          string     `json:"platform"`
 	ExternalAccountID string     `json:"external_account_id,omitempty"`
 	Username          string     `json:"username,omitempty"`
+	FollowersCount    int64      `json:"follower_count"`
 	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
 	ConnectedAt       *time.Time `json:"connected_at,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
@@ -76,6 +90,8 @@ func (h ClientsHandler) CreateClient(c *gin.Context) {
 		Name:            strings.TrimSpace(req.Name),
 		LogoURL:         strings.TrimSpace(req.LogoURL),
 		ReportBrandName: strings.TrimSpace(req.ReportBrandName),
+		Industry:        strings.TrimSpace(req.Industry),
+		Location:        strings.TrimSpace(req.Location),
 	}
 	if newClient.Name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
@@ -142,6 +158,66 @@ func (h ClientsHandler) ListClients(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": out})
 }
 
+func (h ClientsHandler) UpdateClient(c *gin.Context) {
+	authCtx, err := GetAuthContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	id, err := uuid.Parse(strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	var req updateClientRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	var cl models.Client
+	if err := h.db.Where("id = ? AND agency_id = ?", id, authCtx.AgencyID).First(&cl).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "client not found"})
+		return
+	}
+
+	updates := map[string]any{}
+	if s := strings.TrimSpace(req.Name); s != "" {
+		updates["name"] = s
+	}
+	if s := strings.TrimSpace(req.LogoURL); s != "" || req.LogoURL != "" {
+		updates["logo_url"] = strings.TrimSpace(req.LogoURL)
+	}
+	if s := strings.TrimSpace(req.ReportBrandName); s != "" || req.ReportBrandName != "" {
+		updates["report_brand_name"] = strings.TrimSpace(req.ReportBrandName)
+	}
+	if s := strings.TrimSpace(req.Industry); s != "" || req.Industry != "" {
+		updates["industry"] = strings.TrimSpace(req.Industry)
+	}
+	if s := strings.TrimSpace(req.Location); s != "" || req.Location != "" {
+		updates["location"] = strings.TrimSpace(req.Location)
+	}
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	updates["updated_at"] = time.Now().UTC()
+
+	if err := h.db.Model(&models.Client{}).Where("id = ? AND agency_id = ?", id, authCtx.AgencyID).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
+		return
+	}
+
+	var out models.Client
+	if err := h.db.Preload("SocialAccounts").Where("id = ? AND agency_id = ?", id, authCtx.AgencyID).First(&out).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
+		return
+	}
+	c.JSON(http.StatusOK, toClientDTO(out))
+}
+
 func toClientDTO(cl models.Client) clientDTO {
 	dto := clientDTO{
 		ID:              cl.ID.String(),
@@ -149,6 +225,8 @@ func toClientDTO(cl models.Client) clientDTO {
 		Name:            cl.Name,
 		LogoURL:         cl.LogoURL,
 		ReportBrandName: cl.ReportBrandName,
+		Industry:        cl.Industry,
+		Location:        cl.Location,
 		CreatedAt:       cl.CreatedAt,
 		UpdatedAt:       cl.UpdatedAt,
 	}
@@ -162,6 +240,7 @@ func toClientDTO(cl models.Client) clientDTO {
 				Platform:          sa.Platform,
 				ExternalAccountID: sa.ExternalAccountID,
 				Username:          sa.Username,
+				FollowersCount:    sa.FollowersCount,
 				ExpiresAt:         sa.ExpiresAt,
 				ConnectedAt:       sa.ConnectedAt,
 				CreatedAt:         sa.CreatedAt,

@@ -54,6 +54,12 @@ func RequireJWT(cfg config.AuthConfig) gin.HandlerFunc {
 			return
 		}
 
+		tokenUse := strings.ToLower(strings.TrimSpace(claims.TokenUse))
+		if tokenUse != "" && tokenUse != "access" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
+
 		userID, err := uuid.Parse(strings.TrimSpace(claims.Subject))
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
@@ -109,4 +115,3 @@ func GetAuthContext(c *gin.Context) (AuthContext, error) {
 	}
 	return authCtx, nil
 }
-

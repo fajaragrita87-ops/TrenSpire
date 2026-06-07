@@ -1,11 +1,12 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
-import { getAccessToken } from './lib/auth'
+import { useAuthStore } from './lib/auth'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
+import ProfitsLossDashboardPage from './pages/ProfitsLossDashboardPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const token = getAccessToken()
+  const token = useAuthStore((s) => s.accessToken)
   if (!token) return <Navigate to="/login" replace />
   return <>{children}</>
 }
@@ -13,6 +14,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
+      <Route path="/pnl" element={<ProfitsLossDashboardPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/"

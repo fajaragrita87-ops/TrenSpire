@@ -29,4 +29,3 @@ func (h HealthHandler) Health(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
-

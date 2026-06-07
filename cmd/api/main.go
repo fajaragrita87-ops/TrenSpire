@@ -11,9 +11,12 @@ import (
 	"trendspire/internal/config"
 	"trendspire/internal/db"
 	"trendspire/internal/httpapi"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load()
 	cfg := config.Load()
 
 	gormDB, err := db.OpenPostgres(cfg.DB)
@@ -49,4 +52,3 @@ func main() {
 	defer cancel()
 	_ = srv.Shutdown(ctx)
 }
-

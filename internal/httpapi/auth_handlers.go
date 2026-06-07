@@ -11,6 +11,8 @@ import (
 	"trendspire/internal/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
@@ -26,6 +28,8 @@ func NewAuthHandler(cfg config.Config, db *gorm.DB) AuthHandler {
 
 type registerRequest struct {
 	AgencyName string `json:"agency_name" binding:"required"`
+	LogoURL    string `json:"logo_url"`
+	PrimaryColor string `json:"primary_color"`
 	Email      string `json:"email" binding:"required,email"`
 	Password   string `json:"password" binding:"required,min=8"`
 	Name       string `json:"name"`
@@ -37,11 +41,13 @@ type loginRequest struct {
 }
 
 type authResponse struct {
-	AccessToken string    `json:"access_token"`
-	TokenType   string    `json:"token_type"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	User        userDTO   `json:"user"`
-	Agency      agencyDTO `json:"agency"`
+	AccessToken      string    `json:"access_token"`
+	TokenType        string    `json:"token_type"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	RefreshToken     string    `json:"refresh_token"`
+	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
+	User             userDTO   `json:"user"`
+	Agency           agencyDTO `json:"agency"`
 }
 
 type userDTO struct {
@@ -56,6 +62,10 @@ type agencyDTO struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	LogoURL string `json:"logo_url,omitempty"`
+}
+
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
 func (h AuthHandler) Register(c *gin.Context) {
@@ -80,6 +90,8 @@ func (h AuthHandler) Register(c *gin.Context) {
 	err = h.db.Transaction(func(tx *gorm.DB) error {
 		createdAgency = models.Agency{
 			Name: agencyName,
+			LogoURL: strings.TrimSpace(req.LogoURL),
+			PrimaryColor: strings.TrimSpace(req.PrimaryColor),
 		}
 		if err := tx.Create(&createdAgency).Error; err != nil {
 			return err
@@ -113,10 +125,18 @@ func (h AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	refreshRes, err := auth.NewRefreshToken(h.cfg.Auth, createdUser)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
+		return
+	}
+
 	c.JSON(http.StatusCreated, authResponse{
-		AccessToken: tokenRes.Token,
-		TokenType:   "Bearer",
-		ExpiresAt:   tokenRes.ExpiresAt,
+		AccessToken:      tokenRes.Token,
+		TokenType:        "Bearer",
+		ExpiresAt:        tokenRes.ExpiresAt,
+		RefreshToken:     refreshRes.Token,
+		RefreshExpiresAt: refreshRes.ExpiresAt,
 		User: userDTO{
 			ID:       createdUser.ID.String(),
 			AgencyID: createdUser.AgencyID.String(),
@@ -170,10 +190,99 @@ func (h AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	refreshRes, err := auth.NewRefreshToken(h.cfg.Auth, user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
+		return
+	}
+
 	c.JSON(http.StatusOK, authResponse{
-		AccessToken: tokenRes.Token,
-		TokenType:   "Bearer",
-		ExpiresAt:   tokenRes.ExpiresAt,
+		AccessToken:      tokenRes.Token,
+		TokenType:        "Bearer",
+		ExpiresAt:        tokenRes.ExpiresAt,
+		RefreshToken:     refreshRes.Token,
+		RefreshExpiresAt: refreshRes.ExpiresAt,
+		User: userDTO{
+			ID:       user.ID.String(),
+			AgencyID: user.AgencyID.String(),
+			Email:    user.Email,
+			Role:     user.Role,
+			Name:     user.Name,
+		},
+		Agency: agencyDTO{
+			ID:      agency.ID.String(),
+			Name:    agency.Name,
+			LogoURL: agency.LogoURL,
+		},
+	})
+}
+
+func (h AuthHandler) Refresh(c *gin.Context) {
+	var req refreshRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	claims := auth.RefreshTokenClaims{}
+	token, err := jwt.ParseWithClaims(strings.TrimSpace(req.RefreshToken), &claims, func(t *jwt.Token) (any, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, jwt.ErrTokenSignatureInvalid
+		}
+		return []byte(h.cfg.Auth.JWTSecret), nil
+	}, jwt.WithIssuer(h.cfg.Auth.JWTIssuer))
+	if err != nil || token == nil || !token.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		return
+	}
+
+	if strings.ToLower(strings.TrimSpace(claims.TokenUse)) != "refresh" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		return
+	}
+
+	userID, err := uuid.Parse(strings.TrimSpace(claims.Subject))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		return
+	}
+
+	agencyID, err := uuid.Parse(strings.TrimSpace(claims.AgencyID))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		return
+	}
+
+	var user models.AgencyUser
+	if err := h.db.Where("id = ?", userID).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if user.AgencyID != agencyID {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var agency models.Agency
+	_ = h.db.Where("id = ?", user.AgencyID).First(&agency).Error
+
+	accessRes, err := auth.NewAccessToken(h.cfg.Auth, user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
+		return
+	}
+	refreshRes, err := auth.NewRefreshToken(h.cfg.Auth, user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, authResponse{
+		AccessToken:      accessRes.Token,
+		TokenType:        "Bearer",
+		ExpiresAt:        accessRes.ExpiresAt,
+		RefreshToken:     refreshRes.Token,
+		RefreshExpiresAt: refreshRes.ExpiresAt,
 		User: userDTO{
 			ID:       user.ID.String(),
 			AgencyID: user.AgencyID.String(),
@@ -196,4 +305,3 @@ func isUniqueViolation(err error) bool {
 	}
 	return false
 }
-
