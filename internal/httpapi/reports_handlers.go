@@ -328,6 +328,7 @@ type reportData struct {
 	TopPosts          []topPost
 	CompetitorInsight map[string]any
 	OfflineCampaign   map[string]any
+	ContentPlan       map[string]any
 }
 
 type keyMetrics struct {
@@ -437,6 +438,7 @@ func (h ReportsHandler) buildReportData(agencyID, clientID uuid.UUID, periodStar
 
 	comp := h.fetchLatestCompetitorInsight(agencyID, clientID)
 	offline := h.fetchLatestOfflineCampaign(agencyID, clientID)
+	plan := h.fetchLatestContentPlan(agencyID, clientID)
 
 	return reportData{
 		ExecutiveSummary: exec,
@@ -454,6 +456,7 @@ func (h ReportsHandler) buildReportData(agencyID, clientID uuid.UUID, periodStar
 		TopPosts:          top,
 		CompetitorInsight: comp,
 		OfflineCampaign:   offline,
+		ContentPlan:       plan,
 	}, nil
 }
 
@@ -485,6 +488,24 @@ func (h ReportsHandler) fetchLatestOfflineCampaign(agencyID, clientID uuid.UUID)
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal([]byte(row.Extracted), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func (h ReportsHandler) fetchLatestContentPlan(agencyID, clientID uuid.UUID) map[string]any {
+	var row models.AIGeneration
+	if err := h.db.
+		Where("agency_id = ? AND kind = ? AND input->>'client_id' = ?", agencyID, "content_plan", clientID.String()).
+		Order("created_at desc").
+		First(&row).Error; err != nil {
+		return nil
+	}
+	if len(row.Output) == 0 || !json.Valid(row.Output) {
+		return nil
+	}
+	out := map[string]any{}
+	if err := json.Unmarshal(row.Output, &out); err != nil {
 		return nil
 	}
 	return out
@@ -807,6 +828,56 @@ func renderReportHTML(agency models.Agency, client models.Client, accent string,
 		}
 	}
 
+	planHTML := ""
+	if d.ContentPlan != nil {
+		itemsArr, _ := d.ContentPlan["items"].([]any)
+		if len(itemsArr) > 0 {
+			planHTML += `<div class="grid" style="grid-template-columns:1fr; margin-top:14px"><div class="card"><div class="h2">Next Actions (Content Plan)</div>`
+			planHTML += `<ul style="margin:0;padding-left:18px;display:grid;gap:6px">`
+			n := 0
+			for i := 0; i < len(itemsArr) && n < 7; i++ {
+				m, ok := itemsArr[i].(map[string]any)
+				if !ok {
+					continue
+				}
+				platform, _ := m["platform"].(string)
+				title, _ := m["title"].(string)
+				angle, _ := m["angle"].(string)
+				tm, _ := m["time"].(string)
+				platform = strings.TrimSpace(platform)
+				title = strings.TrimSpace(title)
+				angle = strings.TrimSpace(angle)
+				tm = strings.TrimSpace(tm)
+				labelParts := make([]string, 0, 3)
+				if platform != "" {
+					labelParts = append(labelParts, platform)
+				}
+				if tm != "" {
+					labelParts = append(labelParts, tm)
+				}
+				label := strings.Join(labelParts, " · ")
+				bodyParts := make([]string, 0, 2)
+				if title != "" {
+					bodyParts = append(bodyParts, htmlEscapeText(title))
+				}
+				if angle != "" {
+					bodyParts = append(bodyParts, `<span class="muted">`+htmlEscapeText(angle)+`</span>`)
+				}
+				body := strings.Join(bodyParts, ` · `)
+				if body == "" {
+					continue
+				}
+				if label != "" {
+					planHTML += `<li><span class="muted">` + htmlEscapeText(label) + `</span> — ` + body + `</li>`
+				} else {
+					planHTML += `<li>` + body + `</li>`
+				}
+				n++
+			}
+			planHTML += `</ul></div></div>`
+		}
+	}
+
 	insightGrid := ""
 	if compHTML != "" || offlineHTML != "" {
 		cols := "1fr"
@@ -815,6 +886,9 @@ func renderReportHTML(agency models.Agency, client models.Client, accent string,
 		}
 		insightGrid = fmt.Sprintf(`<div class="grid" style="grid-template-columns:%s; margin-top:14px">%s%s</div>`, cols, compHTML, offlineHTML)
 	}
+	tailHTML := insightGrid + planHTML
+
+	anglesHTML := renderReportAnglesHTML(generateReportAngles(client, d))
 
 	return fmt.Sprintf(`<!doctype html>
 <html lang="en">
@@ -839,6 +913,11 @@ func renderReportHTML(agency models.Agency, client models.Client, accent string,
     .pill{display:inline-block;background:color-mix(in srgb, var(--accent), #fff 70%%);color:#111;border-radius:999px;padding:6px 10px;font-weight:700;font-size:12px}
     .chart{width:100%%;height:auto}
     .post{font-size:13px;line-height:1.4;margin:6px 0}
+    .angles{display:grid;grid-template-columns:1fr;gap:12px}
+    @media(min-width:860px){.angles{grid-template-columns:1fr 1fr}}
+    .angle{border:1px solid #eee;border-radius:14px;padding:12px}
+    .angle-title{font-weight:900;font-size:13px}
+    .angle-line{font-size:13px;line-height:1.55;margin-top:6px}
   </style>
 </head>
 <body>
@@ -898,6 +977,13 @@ func renderReportHTML(agency models.Agency, client models.Client, accent string,
       </div>
     </div>
 
+    <div class="grid" style="grid-template-columns:1fr; margin-top:14px">
+      <div class="card">
+        <div class="h2">Insight Angles (Client-ready)</div>
+        %s
+      </div>
+    </div>
+
     %s
   </div>
 </body>
@@ -917,8 +1003,228 @@ func renderReportHTML(agency models.Agency, client models.Client, accent string,
 		pieSVG,
 		topPostsHTML,
 		htmlEscapeText(d.Recommendation),
-		insightGrid,
+		anglesHTML,
+		tailHTML,
 	)
+}
+
+type reportAngle struct {
+	Title      string
+	ClientLine string
+	KeyPoints  []string
+	NextSteps  []string
+}
+
+func generateReportAngles(client models.Client, d reportData) []reportAngle {
+	name := strings.TrimSpace(client.Name)
+	if name == "" {
+		name = "brand"
+	}
+
+	key := d.KeyMetrics
+	erPct := key.EngagementRate * 100
+	erBand := "perlu ditingkatkan"
+	if erPct >= 5.0 {
+		erBand = "kuat"
+	} else if erPct >= 2.0 {
+		erBand = "cukup sehat"
+	}
+
+	topPlatform := ""
+	topPlatformShare := 0.0
+	totalImpr := int64(0)
+	for _, p := range d.PlatformBreakdown {
+		totalImpr += p.Impressions
+	}
+	if len(d.PlatformBreakdown) > 0 {
+		topPlatform = strings.TrimSpace(d.PlatformBreakdown[0].Platform)
+		if totalImpr > 0 {
+			topPlatformShare = float64(d.PlatformBreakdown[0].Impressions) / float64(totalImpr) * 100
+		}
+	}
+
+	topPostSnippets := make([]string, 0, 3)
+	for i := 0; i < len(d.TopPosts) && i < 3; i++ {
+		s := strings.TrimSpace(d.TopPosts[i].Content)
+		if s == "" {
+			continue
+		}
+		r := []rune(s)
+		if len(r) > 120 {
+			s = string(r[:120]) + "…"
+		}
+		if p := strings.TrimSpace(d.TopPosts[i].Platform); p != "" {
+			s = strings.ToUpper(p) + ": " + s
+		}
+		topPostSnippets = append(topPostSnippets, s)
+	}
+
+	exec := reportAngle{
+		Title:      "Business Impact",
+		ClientLine: fmt.Sprintf("Untuk %s, performa 30 hari terakhir menunjukkan reach %d dengan engagement rate %s (kategori: %s).", name, key.Reach, fmt.Sprintf("%.2f%%", erPct), erBand),
+		KeyPoints: []string{
+			fmt.Sprintf("Reach (impressions) tercatat %d dan engagement %d (likes+comments).", key.Reach, key.Engagements),
+			"Fokus optimasi: tingkatkan engagement per impresi lewat format konten yang terbukti memicu respons.",
+		},
+		NextSteps: []string{
+			"Tracking KPI mingguan: ER, saves/shares (jika tersedia), dan impresi per posting.",
+			"Uji 2–3 variasi hook + CTA untuk menaikkan ER tanpa menurunkan reach.",
+		},
+	}
+
+	channel := reportAngle{
+		Title:      "Channel Focus",
+		ClientLine: "Prioritas channel ditentukan dari kontribusi impresi dan ruang optimasi engagement di tiap platform.",
+		KeyPoints: func() []string {
+			out := []string{}
+			if topPlatform != "" && topPlatformShare > 0 {
+				out = append(out, fmt.Sprintf("Platform utama saat ini: %s (±%.0f%% dari total impressions).", strings.ToUpper(topPlatform), topPlatformShare))
+			} else if topPlatform != "" {
+				out = append(out, fmt.Sprintf("Platform utama saat ini: %s.", strings.ToUpper(topPlatform)))
+			} else {
+				out = append(out, "Belum ada breakdown platform yang cukup untuk menentukan channel utama.")
+			}
+			out = append(out, "Gunakan 1 platform sebagai growth engine, 1 platform sebagai support untuk eksperimen format.")
+			return out
+		}(),
+		NextSteps: []string{
+			"Alokasi effort: 70%% di platform utama, 30%% untuk eksperimen format di platform kedua.",
+			"Review performa per platform setiap 7 hari: impresi per konten + ER per konten.",
+		},
+	}
+
+	creative := reportAngle{
+		Title:      "Creative & Messaging",
+		ClientLine: "Kita ulangi pola kreatif yang sudah terbukti di top posts, lalu sistematisasikan jadi seri konten.",
+		KeyPoints: func() []string {
+			out := []string{}
+			if len(topPostSnippets) > 0 {
+				out = append(out, "Konten yang paling menarik audience (sample):")
+				out = append(out, topPostSnippets...)
+			} else {
+				out = append(out, "Belum ada data top posts; mulai dari 3 format aman: edukasi singkat, before/after, dan social proof.")
+			}
+			out = append(out, "Bangun konsistensi: 1 tema besar → 3 variasi angle → 1 CTA yang jelas.")
+			return out
+		}(),
+		NextSteps: []string{
+			"Buat 2 seri konten mingguan (mis: tips cepat + studi kasus) dengan format tetap.",
+			"Standarisasi: hook 1 kalimat, proof 1 poin, CTA 1 aksi.",
+		},
+	}
+
+	competitor := reportAngle{
+		Title:      "Competitive Angle",
+		ClientLine: "Kita jadikan insight kompetitor sebagai pemetaan peluang: cepat dieksekusi + jelas dampaknya.",
+		KeyPoints: func() []string {
+			out := []string{}
+			var qw []any
+			if d.CompetitorInsight != nil {
+				qw, _ = d.CompetitorInsight["quick_wins_7_days"].([]any)
+			}
+			if len(qw) > 0 {
+				out = append(out, "Quick wins dari competitor insight:")
+				for i := 0; i < len(qw) && i < 3; i++ {
+					if s, ok := qw[i].(string); ok {
+						s = strings.TrimSpace(s)
+						if s != "" {
+							out = append(out, s)
+						}
+					}
+				}
+			} else {
+				out = append(out, "Belum ada competitor insight terbaru; sementara pakai benchmark: positioning, offer, dan format konten kompetitor teratas.")
+			}
+			out = append(out, "Tujuan: diferensiasi yang gampang dipahami klien dalam 1 kalimat.")
+			return out
+		}(),
+		NextSteps: []string{
+			"Ambil 1 gap kompetitor: angle yang mereka tidak kuasai namun relevan untuk audience.",
+			"Eksekusi 3 konten 'counter-positioning' minggu ini (claim → proof → CTA).",
+		},
+	}
+
+	execution := reportAngle{
+		Title:      "Execution (7 Days)",
+		ClientLine: "Rencana 7 hari difokuskan ke output: konten jalan, learning cepat, dan angka bisa dievaluasi.",
+		KeyPoints: func() []string {
+			out := []string{"Target 7 hari: konsistensi + peningkatan ER lewat eksperimen hook dan format."}
+			var itemsArr []any
+			if d.ContentPlan != nil {
+				itemsArr, _ = d.ContentPlan["items"].([]any)
+			}
+			if len(itemsArr) > 0 {
+				out = append(out, "Prioritas action dari content plan:")
+				n := 0
+				for i := 0; i < len(itemsArr) && n < 3; i++ {
+					m, ok := itemsArr[i].(map[string]any)
+					if !ok {
+						continue
+					}
+					platform, _ := m["platform"].(string)
+					title, _ := m["title"].(string)
+					platform = strings.TrimSpace(platform)
+					title = strings.TrimSpace(title)
+					line := strings.TrimSpace(strings.Trim(strings.Join([]string{platform, title}, " · "), "· "))
+					if line != "" {
+						out = append(out, line)
+						n++
+					}
+				}
+			}
+			return out
+		}(),
+		NextSteps: []string{
+			"Day 1–2: produksi 3 konten (2 format utama + 1 eksperimen).",
+			"Day 3–7: posting + evaluasi harian (impressions/ER) → iterasi hook.",
+		},
+	}
+
+	return []reportAngle{exec, channel, creative, competitor, execution}
+}
+
+func renderReportAnglesHTML(angles []reportAngle) string {
+	if len(angles) == 0 {
+		return `<div class="muted">No insights yet.</div>`
+	}
+	html := `<div class="angles">`
+	for _, a := range angles {
+		if strings.TrimSpace(a.Title) == "" && strings.TrimSpace(a.ClientLine) == "" && len(a.KeyPoints) == 0 && len(a.NextSteps) == 0 {
+			continue
+		}
+		html += `<div class="angle">`
+		if strings.TrimSpace(a.Title) != "" {
+			html += `<div class="angle-title">` + htmlEscapeText(a.Title) + `</div>`
+		}
+		if strings.TrimSpace(a.ClientLine) != "" {
+			html += `<div class="angle-line">` + htmlEscapeText(a.ClientLine) + `</div>`
+		}
+		if len(a.KeyPoints) > 0 {
+			html += `<div style="height:8px"></div><div class="muted">Key points</div><ul style="margin:6px 0 0;padding-left:18px;display:grid;gap:6px">`
+			for i := 0; i < len(a.KeyPoints) && i < 6; i++ {
+				s := strings.TrimSpace(a.KeyPoints[i])
+				if s == "" {
+					continue
+				}
+				html += `<li>` + htmlEscapeText(s) + `</li>`
+			}
+			html += `</ul>`
+		}
+		if len(a.NextSteps) > 0 {
+			html += `<div style="height:10px"></div><div class="muted">Next steps</div><ul style="margin:6px 0 0;padding-left:18px;display:grid;gap:6px">`
+			for i := 0; i < len(a.NextSteps) && i < 6; i++ {
+				s := strings.TrimSpace(a.NextSteps[i])
+				if s == "" {
+					continue
+				}
+				html += `<li>` + htmlEscapeText(s) + `</li>`
+			}
+			html += `</ul>`
+		}
+		html += `</div>`
+	}
+	html += `</div>`
+	return html
 }
 
 func renderLineChartSVG(series []dailyPoint, accent string) string {

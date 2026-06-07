@@ -11,8 +11,9 @@ import { useNavigate } from 'react-router-dom'
 
 import {
   aiCaption,
+  aiHashtags,
   aiContentPlan,
-  analyticsDashboard,
+  aiTrendPlan,
   clientTimeline,
   connectAccount,
   competitorAnalyze,
@@ -20,17 +21,25 @@ import {
   createOfflineCampaign,
   createPost,
   createReport,
+  explodingTopics,
+  googleTrendsTrending,
   listCalendarPosts,
   listClients,
   listPosts,
   listReports,
   publishNow,
   schedulePost,
+  similarwebTraffic,
+  updateAgency,
+  uploadAgencyLogo,
   updateClient,
   type CalendarEvent,
   type Client,
   type ContentPlanItem,
   type ClientTimelineEvent,
+  type ExplodingTopicsResponse,
+  type GoogleTrendsResponse,
+  type SimilarwebTrafficResponse,
   type Post,
   type ReportListItem,
 } from '../lib/api'
@@ -42,7 +51,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { endOfMonth, endOfWeek, format, getDay, parse, startOfMonth, startOfWeek } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 
-type NavKey = 'Dashboard' | 'Clients' | 'Posts' | 'Calendar' | 'Analytics' | 'Reports'
+type NavKey = 'Dashboard' | 'Clients' | 'Posts' | 'Calendar' | 'Analytics' | 'Reports' | 'Settings'
 
 function NavIcon({ k }: { k: NavKey }) {
   const common = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', xmlns: 'http://www.w3.org/2000/svg' }
@@ -96,6 +105,20 @@ function NavIcon({ k }: { k: NavKey }) {
       </svg>
     )
   }
+  if (k === 'Settings') {
+    return (
+      <svg {...common}>
+        <path
+          {...stroke}
+          d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+        />
+        <path
+          {...stroke}
+          d="M19.4 15a7.9 7.9 0 0 0 .1-1l1.6-1.2-1.6-2.8-1.9.6a7.7 7.7 0 0 0-1.7-1l-.3-2h-3.2l-.3 2a7.7 7.7 0 0 0-1.7 1l-1.9-.6-1.6 2.8L4.5 14a7.9 7.9 0 0 0 .1 1 7.9 7.9 0 0 0-.1 1L3 17.2 4.6 20l1.9-.6c.5.4 1.1.7 1.7 1l.3 2h3.2l.3-2c.6-.3 1.2-.6 1.7-1l1.9.6 1.6-2.8-1.6-1.2c.1-.3.1-.7.1-1Z"
+        />
+      </svg>
+    )
+  }
   return (
     <svg {...common}>
       <path {...stroke} d="M7 7h10v10H7V7Z" />
@@ -133,6 +156,7 @@ const navItems: Array<{ key: NavKey; label: string }> = [
   { key: 'Calendar', label: 'Calendar' },
   { key: 'Analytics', label: 'Analytics' },
   { key: 'Reports', label: 'Reports' },
+  { key: 'Settings', label: 'Settings' },
 ]
 
 export default function DashboardPage() {
@@ -140,9 +164,9 @@ export default function DashboardPage() {
   const toast = useToast()
   const user = useAuthStore((s) => s.user)
   const agency = useAuthStore((s) => s.agency)
+  const [brandLogoOK, setBrandLogoOK] = useState(true)
   const [activeNav, setActiveNav] = useState<NavKey>('Dashboard')
   const [moduleFX, setModuleFX] = useState<{ key: NavKey; title: string; hint: string; seq: number } | null>(null)
-  const [isGuideOpen, setIsGuideOpen] = useState(false)
   const [intelOpen, setIntelOpen] = useState(false)
   const [intelClientId, setIntelClientId] = useState<string | null>(null)
   const [intelInitialTab, setIntelInitialTab] = useState<'profile' | 'competitor' | 'offline'>('profile')
@@ -178,6 +202,7 @@ export default function DashboardPage() {
       Calendar: { title: 'CALENDAR', hint: 'Rendering timeline…' },
       Analytics: { title: 'ANALYTICS', hint: 'Sampling live signals…' },
       Reports: { title: 'REPORTS', hint: 'Preparing PDF pipeline…' },
+      Settings: { title: 'SETTINGS', hint: 'Loading workspace config…' },
     }
     setModuleFX((prev) => ({ key: next, title: map[next].title, hint: map[next].hint, seq: (prev?.seq ?? 0) + 1 }))
   }
@@ -292,6 +317,11 @@ export default function DashboardPage() {
     [posts],
   )
   const topClients = useMemo(() => clients.slice(0, 6), [clients])
+  const brandLogoSrc = (agency?.logo_url ?? '').trim() || '/trendspire-logo.png'
+
+  useEffect(() => {
+    setBrandLogoOK(true)
+  }, [brandLogoSrc])
 
   return (
     <div className="dash-page">
@@ -301,7 +331,22 @@ export default function DashboardPage() {
           <div className="dash-header-left">
             <div className="dash-brand">
               <div className="dash-logo" aria-hidden="true">
-                TS
+                {brandLogoOK ? (
+                  <img
+                    key={brandLogoSrc}
+                    src={brandLogoSrc}
+                    alt=""
+                    draggable={false}
+                    onLoad={() => {
+                      setBrandLogoOK(true)
+                    }}
+                    onError={() => {
+                      setBrandLogoOK(false)
+                    }}
+                  />
+                ) : (
+                  'TS'
+                )}
               </div>
               <div>
                 <div className="dash-title">TrendSpire</div>
@@ -366,11 +411,6 @@ export default function DashboardPage() {
                       </span>
                       <span className="dash-nav-label">{item.label}</span>
                     </button>
-                    {item.key === 'Reports' ? (
-                      <button type="button" className="dash-nav-help" onClick={() => setIsGuideOpen(true)}>
-                        Tentang & panduan
-                      </button>
-                    ) : null}
                   </div>
                 ))}
               </div>
@@ -420,28 +460,31 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          <section className="dash-metrics">
-            <div className="dash-metric-card grad-purple">
-              <div className="dash-metric-top">
-                <div className="dash-metric-title">Total Clients</div>
-                <div className="dash-metric-sub">{isLoading ? 'Loading' : 'Live'}</div>
+          <section className="dash-card dash-topmid">
+            <div className="dash-metrics">
+              <div className="dash-metric-card grad-purple">
+                <div className="dash-metric-top">
+                  <div className="dash-metric-title">Total Clients</div>
+                  <div className="dash-metric-sub">{isLoading ? 'Loading' : 'Live'}</div>
+                </div>
+                <div className="dash-metric-value">{String(totalClients)}</div>
               </div>
-              <div className="dash-metric-value">{String(totalClients)}</div>
-            </div>
-            <div className="dash-metric-card grad-gold">
-              <div className="dash-metric-top">
-                <div className="dash-metric-title">Connected Accounts</div>
-                <div className="dash-metric-sub">{isLoading ? 'Loading' : 'Live'}</div>
+              <div className="dash-metric-card grad-gold">
+                <div className="dash-metric-top">
+                  <div className="dash-metric-title">Connected Accounts</div>
+                  <div className="dash-metric-sub">{isLoading ? 'Loading' : 'Live'}</div>
+                </div>
+                <div className="dash-metric-value">{String(connectedAccounts)}</div>
               </div>
-              <div className="dash-metric-value">{String(connectedAccounts)}</div>
-            </div>
-            <div className="dash-metric-card grad-teal">
-              <div className="dash-metric-top">
-                <div className="dash-metric-title">Scheduled Posts</div>
-                <div className="dash-metric-sub">{postsLoading ? 'Loading' : 'Live'}</div>
+              <div className="dash-metric-card grad-teal">
+                <div className="dash-metric-top">
+                  <div className="dash-metric-title">Scheduled Posts</div>
+                  <div className="dash-metric-sub">{postsLoading ? 'Loading' : 'Live'}</div>
+                </div>
+                <div className="dash-metric-value">{String(scheduledPosts)}</div>
               </div>
-              <div className="dash-metric-value">{String(scheduledPosts)}</div>
             </div>
+            <ClientGrowthSmartCard clients={clients} isLoading={isLoading} error={error} />
           </section>
 
           <section className="dash-card dash-chart">
@@ -454,91 +497,116 @@ export default function DashboardPage() {
               </div>
               <ModeHUD nav={activeNav} syncing={isLoading || postsLoading} />
             </div>
-            {activeNav === 'Clients' ? (
-              <div className="dash-stack">
-                <CreateClientForm
-                  onCreate={async (input) => {
-                    const created = await createClient(input)
-                    toast.push({ kind: 'success', title: 'Client dibuat', message: created.name })
-                    await reloadClients()
+            <div className="dash-card-body dash-card-body-scroll">
+              {activeNav === 'Clients' ? (
+                <div className="dash-stack">
+                  <CreateClientForm
+                    onCreate={async (input) => {
+                      const created = await createClient(input)
+                      toast.push({ kind: 'success', title: 'Client dibuat', message: created.name })
+                      await reloadClients()
+                      bumpRefresh()
+                    }}
+                  />
+                  <ClientIntelQuickPanel clients={clients} isLoading={isLoading} error={error} onOpenIntel={openIntel} />
+                  <ClientsTable
+                    clients={clients}
+                    isLoading={isLoading}
+                    error={error}
+                    onOpenIntel={(clientId) => {
+                      openIntel(clientId, 'profile', false)
+                    }}
+                    onConnectInstagram={async (clientId) => {
+                      try {
+                        const res = await connectAccount('instagram', clientId)
+                        toast.push({ kind: 'info', title: 'Redirect OAuth', message: 'Membuka halaman connect Instagram' })
+                        window.location.href = res.auth_url
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : 'Gagal connect IG'
+                        toast.push({ kind: 'error', title: 'Gagal connect IG', message: msg })
+                      }
+                    }}
+                  onConnectTikTok={async (clientId) => {
+                    try {
+                      const res = await connectAccount('tiktok', clientId)
+                      toast.push({ kind: 'info', title: 'Redirect OAuth', message: 'Membuka halaman connect TikTok' })
+                      window.location.href = res.auth_url
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : 'Gagal connect TikTok'
+                      toast.push({ kind: 'error', title: 'Gagal connect TikTok', message: msg })
+                    }
+                  }}
+                  />
+                </div>
+              ) : activeNav === 'Calendar' ? (
+                <CalendarPanel clients={clients} refreshSeq={refreshSeq} />
+              ) : activeNav === 'Posts' ? (
+                <PostsPanel
+                  clients={clients}
+                  isClientsLoading={isLoading}
+                  clientsError={error}
+                  posts={posts}
+                  isPostsLoading={postsLoading}
+                  postsError={postsError}
+                  onReloadPosts={reloadPosts}
+                  onDidMutate={() => {
                     bumpRefresh()
+                    void reloadPosts()
                   }}
                 />
-                <ClientIntelQuickPanel clients={clients} isLoading={isLoading} error={error} onOpenIntel={openIntel} />
-                <ClientsTable
+              ) : activeNav === 'Analytics' ? (
+                <AnalyticsPanel clients={clients} isLoading={isLoading} error={error} />
+              ) : activeNav === 'Reports' ? (
+                <ReportsPanel
                   clients={clients}
                   isLoading={isLoading}
                   error={error}
-                  onOpenIntel={(clientId) => {
-                    openIntel(clientId, 'profile', false)
-                  }}
-                  onConnectInstagram={async (clientId) => {
-                    try {
-                      const res = await connectAccount('instagram', clientId)
-                      toast.push({ kind: 'info', title: 'Redirect OAuth', message: 'Membuka halaman connect Instagram' })
-                      window.location.href = res.auth_url
-                    } catch (err) {
-                      const msg = err instanceof Error ? err.message : 'Gagal connect IG'
-                      toast.push({ kind: 'error', title: 'Gagal connect IG', message: msg })
-                    }
+                  onDidMutate={() => {
+                    bumpRefresh()
                   }}
                 />
-              </div>
-            ) : activeNav === 'Calendar' ? (
-              <CalendarPanel clients={clients} refreshSeq={refreshSeq} />
-            ) : activeNav === 'Posts' ? (
-              <PostsPanel
-                clients={clients}
-                isClientsLoading={isLoading}
-                clientsError={error}
-                posts={posts}
-                isPostsLoading={postsLoading}
-                postsError={postsError}
-                onReloadPosts={reloadPosts}
-                onDidMutate={() => {
-                  bumpRefresh()
-                  void reloadPosts()
-                }}
-              />
-            ) : activeNav === 'Analytics' ? (
-              <AnalyticsPanel refreshSeq={refreshSeq} />
-            ) : activeNav === 'Reports' ? (
-              <ReportsPanel
-                clients={clients}
-                isLoading={isLoading}
-                error={error}
-                onDidMutate={() => {
-                  bumpRefresh()
-                }}
-              />
-            ) : activeNav === 'Dashboard' && !isLoading && !error && clients.length === 0 ? (
-              <OnboardingPanel onGoClients={() => activateNav('Clients')} />
-            ) : (
-              <DashboardPanel
-                clients={clients}
-                isClientsLoading={isLoading}
-                clientsError={error}
-                posts={posts}
-                isPostsLoading={postsLoading}
-                postsError={postsError}
-                onReloadPosts={reloadPosts}
-                onOpenIntel={openIntel}
-              />
-            )}
-          </section>
-
-          <section className="dash-card dash-bars">
-            <div className="dash-card-head">
-              <div className="dash-card-title">Analytics</div>
+              ) : activeNav === 'Settings' ? (
+                <SettingsPanel
+                  agency={agency}
+                  userRole={user?.role ?? ''}
+                  theme={theme}
+                  onThemeChange={setTheme}
+                  onSaved={(nextAgency) => {
+                    const st = useAuthStore.getState()
+                    const accessToken = st.accessToken
+                    const refreshToken = st.refreshToken
+                    const u = st.user
+                    if (!accessToken || !refreshToken || !u) return
+                    st.setSession({
+                      accessToken,
+                      refreshToken,
+                      user: u,
+                      agency: { ...((st.agency ?? { id: nextAgency.id, name: nextAgency.name }) as any), ...nextAgency },
+                    })
+                  }}
+                />
+              ) : activeNav === 'Dashboard' && !isLoading && !error && clients.length === 0 ? (
+                <OnboardingPanel onGoClients={() => activateNav('Clients')} />
+              ) : (
+                <DashboardPanel
+                  clients={clients}
+                  isClientsLoading={isLoading}
+                  clientsError={error}
+                  posts={posts}
+                  isPostsLoading={postsLoading}
+                  postsError={postsError}
+                  onReloadPosts={reloadPosts}
+                  onOpenIntel={openIntel}
+                />
+              )}
             </div>
-            <AnalyticsSummaryCard refreshSeq={refreshSeq} />
           </section>
 
           <section className="dash-card dash-donut">
             <div className="dash-card-head">
               <div className="dash-card-title">Upcoming Posts</div>
             </div>
-            <UpcomingPostsCard refreshSeq={refreshSeq} />
+            <UpcomingPostsCard refreshSeq={refreshSeq} onOpenCalendar={() => activateNav('Calendar')} />
           </section>
 
           <section className="dash-card dash-ambient">
@@ -561,7 +629,6 @@ export default function DashboardPage() {
           </section>
           </div>
         </div>
-        <GuideModal open={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
         {intelOpen ? (
           <ClientIntelModal
             client={intelClient}
@@ -570,6 +637,7 @@ export default function DashboardPage() {
             onClose={() => setIntelOpen(false)}
             onDidMutate={() => {
               void reloadClients()
+              void reloadPosts()
               bumpRefresh()
             }}
           />
@@ -609,6 +677,7 @@ function ModeHUD({ nav, syncing }: { nav: NavKey; syncing: boolean }) {
       Calendar: [`${pulse} · TIMELINE`, 'TIME WINDOWS', 'EXECUTE MAP'],
       Analytics: [`${pulse} · SIGNALS`, 'KPI SAMPLER', 'TREND DETECTOR'],
       Reports: [`${pulse} · PDF PIPELINE`, 'MAGIC LINK', 'CLIENT DELIVERY'],
+      Settings: [`${pulse} · WORKSPACE`, 'BRAND IDENTITY', 'ACCESS CONTROL'],
     }
     const arr = table[nav]
     return arr[step % arr.length]
@@ -645,6 +714,7 @@ function AmbientPanel({
       Calendar: 'TIMELINE SWEEP',
       Analytics: 'SIGNAL WAVE',
       Reports: 'PDF PIPELINE',
+      Settings: 'WORKSPACE CONFIG',
     }
     return map[nav]
   }, [nav])
@@ -989,6 +1059,735 @@ function FlowDiagram({
   )
 }
 
+function TrendRadarPanel({ clients }: { clients: Client[] }) {
+  const toast = useToast()
+  const [source, setSource] = useState<'google' | 'exploding' | 'similarweb'>('google')
+
+  const [geo, setGeo] = useState('ID')
+  const [explodingCategory, setExplodingCategory] = useState('marketing')
+  const [explodingType, setExplodingType] = useState<'all' | 'regular' | 'exploding' | 'peaked'>('exploding')
+  const [domain, setDomain] = useState('chatgpt.com')
+  const [country, setCountry] = useState('us')
+
+  const [googleData, setGoogleData] = useState<GoogleTrendsResponse | null>(null)
+  const [explodingData, setExplodingData] = useState<ExplodingTopicsResponse | null>(null)
+  const [similarwebData, setSimilarwebData] = useState<SimilarwebTrafficResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [seq, setSeq] = useState(0)
+
+  const [captionPlatform, setCaptionPlatform] = useState<'facebook' | 'x' | 'tiktok'>('tiktok')
+  const [captionTone, setCaptionTone] = useState<'smart' | 'hype' | 'luxury'>('smart')
+  const [captionOpen, setCaptionOpen] = useState<string | null>(null)
+  const [captionLoading, setCaptionLoading] = useState(false)
+  const [captionError, setCaptionError] = useState<string | null>(null)
+  const [captionVariants, setCaptionVariants] = useState<string[] | null>(null)
+  const [hashtagsLoading, setHashtagsLoading] = useState(false)
+  const [hashtagsError, setHashtagsError] = useState<string | null>(null)
+  const [hashtags, setHashtags] = useState<string[] | null>(null)
+
+  const [planDays, setPlanDays] = useState(7)
+  const [planClientId, setPlanClientId] = useState('')
+  const effectivePlanClientId = planClientId || clients[0]?.id || ''
+  const [planOpen, setPlanOpen] = useState<string | null>(null)
+  const [planMode, setPlanMode] = useState<'quick' | 'strategic' | null>(null)
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planError, setPlanError] = useState<string | null>(null)
+  const [planItems, setPlanItems] = useState<ContentPlanItem[] | null>(null)
+
+  const [watch, setWatch] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('trendspire.watchlist.trends')
+      const parsed = raw ? (JSON.parse(raw) as unknown) : []
+      if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === 'string').slice(0, 50)
+      return []
+    } catch {
+      return []
+    }
+  })
+
+  function setWatchPersist(next: string[]) {
+    const out = Array.from(new Set(next.map((s) => String(s || '').trim()).filter(Boolean))).slice(0, 50)
+    setWatch(out)
+    try {
+      localStorage.setItem('trendspire.watchlist.trends', JSON.stringify(out))
+    } catch {}
+  }
+
+  function toggleWatch(keyword: string) {
+    const k = String(keyword || '').trim()
+    if (!k) return
+    if (watch.includes(k)) {
+      setWatchPersist(watch.filter((x) => x !== k))
+      toast.push({ kind: 'info', title: 'Untracked', message: k })
+      return
+    }
+    setWatchPersist([k, ...watch])
+    toast.push({ kind: 'success', title: 'Tracked', message: k })
+  }
+
+  async function generateCaptions(keyword: string) {
+    const idea = String(keyword || '').trim()
+    if (!idea) return
+    setCaptionLoading(true)
+    setCaptionError(null)
+    setHashtags(null)
+    setHashtagsError(null)
+    setCaptionOpen(idea)
+    setCaptionVariants(null)
+    try {
+      const res = await aiCaption({ content_idea: idea, platform: captionPlatform, tone: captionTone })
+      setCaptionVariants(res.variants ?? [])
+      if (!res.variants?.length) setCaptionError('Tidak ada output')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal generate caption'
+      setCaptionError(msg)
+    } finally {
+      setCaptionLoading(false)
+    }
+  }
+
+  async function generateHashtagsFor(caption: string) {
+    const cap = String(caption || '').trim()
+    const niche = String(captionOpen || '').trim()
+    if (!cap || !niche) return
+    setHashtagsLoading(true)
+    setHashtagsError(null)
+    setHashtags(null)
+    try {
+      const res = await aiHashtags({ caption: cap, niche })
+      setHashtags(res.hashtags ?? [])
+      if (!res.hashtags?.length) setHashtagsError('Tidak ada output')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal generate hashtags'
+      setHashtagsError(msg)
+    } finally {
+      setHashtagsLoading(false)
+    }
+  }
+
+  async function generateQuickPlan(keyword: string) {
+    const k = String(keyword || '').trim()
+    if (!k) return
+    setPlanOpen(k)
+    setPlanMode('quick')
+    setPlanLoading(true)
+    setPlanError(null)
+    setPlanItems(null)
+    try {
+      const res = await aiTrendPlan({ keyword: k, horizon_days: planDays, platforms: [captionPlatform], tone: captionTone })
+      setPlanItems(res.items ?? [])
+      if (!res.items?.length) setPlanError('Tidak ada output')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal generate plan'
+      setPlanError(msg)
+    } finally {
+      setPlanLoading(false)
+    }
+  }
+
+  async function generateStrategicPlan(keyword: string) {
+    const k = String(keyword || '').trim()
+    if (!k) return
+    if (!effectivePlanClientId) {
+      setPlanOpen(k)
+      setPlanMode('strategic')
+      setPlanError('Pilih client dulu untuk strategic plan')
+      setPlanItems(null)
+      return
+    }
+    setPlanOpen(k)
+    setPlanMode('strategic')
+    setPlanLoading(true)
+    setPlanError(null)
+    setPlanItems(null)
+    try {
+      const res = await aiContentPlan({
+        client_id: effectivePlanClientId,
+        horizon_days: planDays,
+        platforms: [captionPlatform],
+        seed_keyword: k,
+      })
+      setPlanItems(res.items ?? [])
+      if (!res.items?.length) setPlanError('Tidak ada output')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal generate plan'
+      setPlanError(msg)
+    } finally {
+      setPlanLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    async function run() {
+      setIsLoading(true)
+      setError(null)
+      try {
+        if (source === 'google') {
+          const d = await googleTrendsTrending({ geo, limit: 10 })
+          if (!cancelled) setGoogleData(d)
+        } else if (source === 'exploding') {
+          const d = await explodingTopics({
+            limit: 10,
+            type: explodingType,
+            categories: explodingCategory ? [explodingCategory] : undefined,
+            sort: 'growth',
+            order: 'desc',
+            timeframe: 12,
+          })
+          if (!cancelled) setExplodingData(d)
+        } else {
+          const d = await similarwebTraffic({ domain, country })
+          if (!cancelled) setSimilarwebData(d)
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Gagal load intel feed'
+        if (!cancelled) setError(msg)
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [country, domain, explodingCategory, explodingType, geo, seq, source])
+
+  const debugURL =
+    source === 'google' ? googleData?.debug_url : source === 'exploding' ? explodingData?.debug_url : similarwebData?.debug_url
+
+  return (
+    <div className="dash-form-card dash-trend-card">
+      <div className="dash-segment-title">Trend Radar</div>
+      <div className="dash-actions" style={{ alignItems: 'end' }}>
+        <label className="field" style={{ minWidth: 200 }}>
+          <span>Source</span>
+          <select value={source} onChange={(e) => setSource(e.target.value as 'google' | 'exploding' | 'similarweb')}>
+            <option value="google">Google Trends</option>
+            <option value="exploding">Exploding Topics</option>
+            <option value="similarweb">Similarweb</option>
+          </select>
+        </label>
+        {source === 'google' ? (
+          <label className="field" style={{ minWidth: 180 }}>
+            <span>Geo</span>
+            <select value={geo} onChange={(e) => setGeo(e.target.value)}>
+              <option value="ID">ID</option>
+              <option value="US">US</option>
+              <option value="GB">GB</option>
+              <option value="SG">SG</option>
+              <option value="AU">AU</option>
+              <option value="JP">JP</option>
+            </select>
+          </label>
+        ) : source === 'exploding' ? (
+          <>
+            <label className="field" style={{ minWidth: 220 }}>
+              <span>Category</span>
+              <select value={explodingCategory} onChange={(e) => setExplodingCategory(e.target.value)}>
+                <option value="marketing">marketing</option>
+                <option value="ai">ai</option>
+                <option value="technology">technology</option>
+                <option value="social-media">social-media</option>
+                <option value="beauty">beauty</option>
+                <option value="health">health</option>
+                <option value="finance">finance</option>
+                <option value="food-beverage">food-beverage</option>
+              </select>
+            </label>
+            <label className="field" style={{ minWidth: 180 }}>
+              <span>Type</span>
+              <select value={explodingType} onChange={(e) => setExplodingType(e.target.value as typeof explodingType)}>
+                <option value="exploding">exploding</option>
+                <option value="regular">regular</option>
+                <option value="peaked">peaked</option>
+                <option value="all">all</option>
+              </select>
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="field" style={{ minWidth: 240 }}>
+              <span>Domain</span>
+              <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.com" />
+            </label>
+            <label className="field" style={{ minWidth: 120 }}>
+              <span>Country</span>
+              <select value={country} onChange={(e) => setCountry(e.target.value)}>
+                <option value="ww">ww</option>
+                <option value="us">us</option>
+                <option value="id">id</option>
+                <option value="sg">sg</option>
+                <option value="gb">gb</option>
+              </select>
+            </label>
+          </>
+        )}
+        {clients.length ? (
+          <label className="field" style={{ minWidth: 240, flex: 1 }}>
+            <span>Client</span>
+            <select value={effectivePlanClientId} onChange={(e) => setPlanClientId(e.target.value)}>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <label className="field" style={{ minWidth: 120 }}>
+          <span>Days</span>
+          <select value={String(planDays)} onChange={(e) => setPlanDays(Number(e.target.value) || 7)}>
+            <option value="7">7</option>
+            <option value="10">10</option>
+            <option value="14">14</option>
+          </select>
+        </label>
+        <label className="field" style={{ minWidth: 150 }}>
+          <span>Platform</span>
+          <select value={captionPlatform} onChange={(e) => setCaptionPlatform(e.target.value as typeof captionPlatform)}>
+            <option value="tiktok">tiktok</option>
+            <option value="facebook">facebook</option>
+            <option value="x">x</option>
+          </select>
+        </label>
+        <label className="field" style={{ minWidth: 150 }}>
+          <span>Tone</span>
+          <select value={captionTone} onChange={(e) => setCaptionTone(e.target.value as typeof captionTone)}>
+            <option value="smart">smart</option>
+            <option value="luxury">luxury</option>
+            <option value="hype">hype</option>
+          </select>
+        </label>
+        <button type="button" className="dash-small-btn" disabled={isLoading} onClick={() => setSeq((v) => v + 1)}>
+          {isLoading ? 'Loading...' : 'Refresh'}
+        </button>
+        {debugURL ? (
+          <button type="button" className="dash-small-btn" onClick={() => window.open(debugURL, '_blank', 'noopener,noreferrer')}>
+            Open Source
+          </button>
+        ) : null}
+      </div>
+
+      {error ? <DashNotice {...prettyErrorMessage(error)} actionLabel="Retry" onAction={() => setSeq((v) => v + 1)} /> : null}
+
+      {isLoading ? (
+        <div className="dash-skeleton-list" aria-busy="true">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="dash-skeleton-row">
+              <div className="skeleton skeleton-line" />
+              <div className="skeleton skeleton-line short" />
+            </div>
+          ))}
+        </div>
+      ) : source === 'google' && googleData?.items?.length ? (
+        <div className="dash-mini-list" style={{ marginTop: 8 }}>
+          {googleData.items.slice(0, 10).map((it, i) => (
+            <div key={`${it.title}-${i}`} className="dash-mini-item">
+              <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <span className="dash-badge hot">HOT</span>
+                <span>{it.title}</span>
+                {it.approx_traffic ? (
+                  <span style={{ marginLeft: 'auto' }} className="muted">
+                    {it.approx_traffic}
+                  </span>
+                ) : null}
+              </div>
+              {it.news?.length ? (
+                <div className="dash-mini-meta">
+                  Top news: {it.news[0]?.source ? `${it.news[0].source} · ` : ''}
+                  {it.news[0]?.title ?? ''}
+                </div>
+              ) : it.description ? (
+                <div className="dash-mini-meta">{it.description}</div>
+              ) : null}
+              <div className="dash-actions" style={{ marginTop: 8 }}>
+                {it.news?.[0]?.url ? (
+                  <button
+                    type="button"
+                    className="dash-small-btn"
+                    onClick={() => window.open(it.news?.[0]?.url ?? '', '_blank', 'noopener,noreferrer')}
+                  >
+                    Read
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="dash-small-btn"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(it.title)
+                      toast.push({ kind: 'success', title: 'Copied', message: 'Trend keyword disalin' })
+                    } catch {
+                      toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                    }
+                  }}
+                >
+                  Copy keyword
+                </button>
+                <button type="button" className="dash-small-btn" onClick={() => toggleWatch(it.title)}>
+                  {watch.includes(it.title) ? 'Untrack' : 'Track'}
+                </button>
+                <button
+                  type="button"
+                  className="dash-small-btn"
+                  disabled={planLoading && planOpen === it.title}
+                  onClick={() => void generateQuickPlan(it.title)}
+                >
+                  {planLoading && planOpen === it.title && planMode === 'quick' ? 'Generating...' : 'Quick Plan'}
+                </button>
+                <button
+                  type="button"
+                  className="dash-small-btn"
+                  disabled={!clients.length || (planLoading && planOpen === it.title)}
+                  onClick={() => void generateStrategicPlan(it.title)}
+                >
+                  {planLoading && planOpen === it.title && planMode === 'strategic' ? 'Generating...' : 'Strategic Plan'}
+                </button>
+                <button
+                  type="button"
+                  className="dash-small-btn"
+                  disabled={captionLoading && captionOpen === it.title}
+                  onClick={() => void generateCaptions(it.title)}
+                >
+                  {captionLoading && captionOpen === it.title ? 'Generating...' : 'Captions'}
+                </button>
+              </div>
+
+              {planOpen === it.title ? (
+                <div style={{ marginTop: 10 }}>
+                  {planError ? <div className="error">{planError}</div> : null}
+                  {planItems?.length ? (
+                    <div className="dash-mini-list">
+                      {planItems.slice(0, 14).map((p) => (
+                        <div key={`${it.title}-${p.day}-${p.platform}`} className="dash-mini-item">
+                          <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                            <span className="dash-badge neutral">DAY {p.day}</span>
+                            <span style={{ textTransform: 'uppercase' }}>{p.platform}</span>
+                            <span className="muted" style={{ marginLeft: 'auto' }}>
+                              {p.time ?? '10:00'}
+                            </span>
+                          </div>
+                          <div className="dash-mini-meta">{p.title}</div>
+                          <div className="dash-mini-meta">{p.angle}</div>
+                          <div className="dash-mini-meta" style={{ whiteSpace: 'pre-wrap' }}>
+                            {p.caption}
+                          </div>
+                          <div className="dash-actions" style={{ marginTop: 8 }}>
+                            <button
+                              type="button"
+                              className="dash-small-btn"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(p.caption)
+                                  toast.push({ kind: 'success', title: 'Copied', message: 'Caption disalin' })
+                                } catch {
+                                  toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                                }
+                              }}
+                            >
+                              Copy caption
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {captionOpen === it.title ? (
+                <div style={{ marginTop: 10 }}>
+                  {captionError ? <div className="error">{captionError}</div> : null}
+                  {captionVariants?.length ? (
+                    <div className="dash-mini-list">
+                      {captionVariants.slice(0, 4).map((v, idx) => (
+                        <div key={`${idx}-${v.slice(0, 12)}`} className="dash-mini-item">
+                          <div className="dash-mini-meta" style={{ whiteSpace: 'pre-wrap' }}>
+                            {v}
+                          </div>
+                          <div className="dash-actions" style={{ marginTop: 8 }}>
+                            <button
+                              type="button"
+                              className="dash-small-btn"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(v)
+                                  toast.push({ kind: 'success', title: 'Copied', message: 'Caption disalin' })
+                                } catch {
+                                  toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                                }
+                              }}
+                            >
+                              Copy
+                            </button>
+                            <button
+                              type="button"
+                              className="dash-small-btn"
+                              disabled={hashtagsLoading}
+                              onClick={() => void generateHashtagsFor(v)}
+                            >
+                              {hashtagsLoading ? 'Generating...' : 'Hashtags'}
+                            </button>
+                          </div>
+                          {hashtagsError ? <div className="error">{hashtagsError}</div> : null}
+                          {hashtags?.length ? (
+                            <div className="dash-actions" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                              {hashtags.slice(0, 16).map((h) => (
+                                <button
+                                  key={h}
+                                  type="button"
+                                  className="dash-ghost-btn"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(h)
+                                      toast.push({ kind: 'success', title: 'Copied', message: h })
+                                    } catch {
+                                      toast.push({ kind: 'error', title: 'Gagal copy', message: 'Copy manual' })
+                                    }
+                                  }}
+                                >
+                                  {h}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : source === 'exploding' && explodingData?.items?.length ? (
+        <div className="dash-mini-list" style={{ marginTop: 8 }}>
+          {explodingData.items.slice(0, 10).map((row, i) => {
+            const r = row as Record<string, unknown>
+            const keyword = typeof r?.keyword === 'string' ? r.keyword : `Topic #${i + 1}`
+            const growth = typeof r?.growth === 'number' ? `${Math.round(r.growth)}%` : ''
+            const volume = typeof r?.absolute_volume === 'number' ? `${Math.round(r.absolute_volume)}/mo` : ''
+            return (
+              <div key={`${keyword}-${i}`} className="dash-mini-item">
+                <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <span className="dash-badge early">EARLY</span>
+                  <span>{keyword}</span>
+                  <span style={{ marginLeft: 'auto' }} className="muted">
+                    {[growth, volume].filter(Boolean).join(' · ')}
+                  </span>
+                </div>
+                {typeof r?.description === 'string' && r.description ? <div className="dash-mini-meta">{r.description}</div> : null}
+                <div className="dash-actions" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="dash-small-btn"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(keyword)
+                        toast.push({ kind: 'success', title: 'Copied', message: 'Keyword disalin' })
+                      } catch {
+                        toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                      }
+                    }}
+                  >
+                    Copy keyword
+                  </button>
+                  <button type="button" className="dash-small-btn" onClick={() => toggleWatch(keyword)}>
+                    {watch.includes(keyword) ? 'Untrack' : 'Track'}
+                  </button>
+                  <button
+                    type="button"
+                    className="dash-small-btn"
+                    disabled={planLoading && planOpen === keyword}
+                    onClick={() => void generateQuickPlan(keyword)}
+                  >
+                    {planLoading && planOpen === keyword && planMode === 'quick' ? 'Generating...' : 'Quick Plan'}
+                  </button>
+                  <button
+                    type="button"
+                    className="dash-small-btn"
+                    disabled={!clients.length || (planLoading && planOpen === keyword)}
+                    onClick={() => void generateStrategicPlan(keyword)}
+                  >
+                    {planLoading && planOpen === keyword && planMode === 'strategic' ? 'Generating...' : 'Strategic Plan'}
+                  </button>
+                  <button
+                    type="button"
+                    className="dash-small-btn"
+                    disabled={captionLoading && captionOpen === keyword}
+                    onClick={() => void generateCaptions(keyword)}
+                  >
+                    {captionLoading && captionOpen === keyword ? 'Generating...' : 'Captions'}
+                  </button>
+                </div>
+
+                {planOpen === keyword ? (
+                  <div style={{ marginTop: 10 }}>
+                    {planError ? <div className="error">{planError}</div> : null}
+                    {planItems?.length ? (
+                      <div className="dash-mini-list">
+                        {planItems.slice(0, 14).map((p) => (
+                          <div key={`${keyword}-${p.day}-${p.platform}`} className="dash-mini-item">
+                            <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                              <span className="dash-badge neutral">DAY {p.day}</span>
+                              <span style={{ textTransform: 'uppercase' }}>{p.platform}</span>
+                              <span className="muted" style={{ marginLeft: 'auto' }}>
+                                {p.time ?? '10:00'}
+                              </span>
+                            </div>
+                            <div className="dash-mini-meta">{p.title}</div>
+                            <div className="dash-mini-meta">{p.angle}</div>
+                            <div className="dash-mini-meta" style={{ whiteSpace: 'pre-wrap' }}>
+                              {p.caption}
+                            </div>
+                            <div className="dash-actions" style={{ marginTop: 8 }}>
+                              <button
+                                type="button"
+                                className="dash-small-btn"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(p.caption)
+                                    toast.push({ kind: 'success', title: 'Copied', message: 'Caption disalin' })
+                                  } catch {
+                                    toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                                  }
+                                }}
+                              >
+                                Copy caption
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {captionOpen === keyword ? (
+                  <div style={{ marginTop: 10 }}>
+                    {captionError ? <div className="error">{captionError}</div> : null}
+                    {captionVariants?.length ? (
+                      <div className="dash-mini-list">
+                        {captionVariants.slice(0, 4).map((v, idx) => (
+                          <div key={`${idx}-${v.slice(0, 12)}`} className="dash-mini-item">
+                            <div className="dash-mini-meta" style={{ whiteSpace: 'pre-wrap' }}>
+                              {v}
+                            </div>
+                            <div className="dash-actions" style={{ marginTop: 8 }}>
+                              <button
+                                type="button"
+                                className="dash-small-btn"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(v)
+                                    toast.push({ kind: 'success', title: 'Copied', message: 'Caption disalin' })
+                                  } catch {
+                                    toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                                  }
+                                }}
+                              >
+                                Copy
+                              </button>
+                              <button
+                                type="button"
+                                className="dash-small-btn"
+                                disabled={hashtagsLoading}
+                                onClick={() => void generateHashtagsFor(v)}
+                              >
+                                {hashtagsLoading ? 'Generating...' : 'Hashtags'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      ) : source === 'similarweb' && similarwebData ? (
+        <div className="dash-mini-list" style={{ marginTop: 8 }}>
+          <div className="dash-mini-item">
+            <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <span className="dash-badge web">WEB</span>
+              <span>{similarwebData.domain}</span>
+              <span style={{ marginLeft: 'auto' }} className="muted">
+                {similarwebData.country.toUpperCase()}
+              </span>
+            </div>
+            {similarwebData.latest ? (
+              <div className="dash-mini-meta">
+                {[
+                  typeof similarwebData.latest.visits === 'number' ? `visits: ${Math.round(similarwebData.latest.visits).toLocaleString('id-ID')}` : '',
+                  typeof similarwebData.latest.bounce_rate === 'number' ? `bounce: ${Math.round(similarwebData.latest.bounce_rate * 100)}%` : '',
+                  typeof similarwebData.latest.pages_per_visit === 'number' ? `pages/visit: ${similarwebData.latest.pages_per_visit.toFixed(2)}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            ) : (
+              <div className="dash-mini-meta muted">No traffic row.</div>
+            )}
+            <div className="dash-actions" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="dash-small-btn"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(similarwebData.domain)
+                    toast.push({ kind: 'success', title: 'Copied', message: 'Domain disalin' })
+                  } catch {
+                    toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                  }
+                }}
+              >
+                Copy domain
+              </button>
+              <button type="button" className="dash-small-btn" onClick={() => void generateQuickPlan(similarwebData.domain)}>
+                Quick Plan
+              </button>
+              <button
+                type="button"
+                className="dash-small-btn"
+                disabled={!clients.length}
+                onClick={() => void generateStrategicPlan(similarwebData.domain)}
+              >
+                Strategic Plan
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="muted" style={{ marginTop: 8 }}>
+          Belum ada data trend.
+        </div>
+      )}
+
+      {watch.length ? (
+        <div style={{ marginTop: 14 }}>
+          <div className="dash-segment-title" style={{ fontSize: 14 }}>
+            Watchlist
+          </div>
+          <div className="dash-actions" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+            {watch.slice(0, 16).map((k) => (
+              <button key={k} type="button" className="dash-small-btn" onClick={() => void generateQuickPlan(k)}>
+                {k}
+              </button>
+            ))}
+            <button type="button" className="dash-small-btn" onClick={() => setWatchPersist([])}>
+              Clear
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function DashboardPanel({
   clients,
   isClientsLoading,
@@ -1069,7 +1868,7 @@ function DashboardPanel({
         {postsError ? <DashNotice {...prettyErrorMessage(postsError)} actionLabel="Retry" onAction={() => void onReloadPosts()} /> : null}
 
         {!isPostsLoading && !postsError ? (
-          <div className="dash-table-wrap">
+          <div className="dash-table-wrap compact">
             <table className="dash-table">
               <thead>
                 <tr>
@@ -1088,7 +1887,7 @@ function DashboardPanel({
                     </td>
                   </tr>
                 ) : (
-                  posts.slice(0, 12).map((p) => (
+                  posts.slice(0, 6).map((p) => (
                     <tr key={p.id}>
                       <td className="dash-td-strong">{p.client_name}</td>
                       <td>{p.status}</td>
@@ -1277,89 +2076,380 @@ function CalendarPanel({ clients, refreshSeq }: { clients: Client[]; refreshSeq:
   )
 }
 
-function AnalyticsSummaryCard({ refreshSeq }: { refreshSeq: number }) {
-  const toast = useToast()
-  const [data, setData] = useState<Awaited<ReturnType<typeof analyticsDashboard>> | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [manualSeq, setManualSeq] = useState(0)
+function ClientGrowthSmartCard({
+  clients,
+  isLoading,
+  error,
+}: {
+  clients: Client[]
+  isLoading: boolean
+  error: string | null
+}) {
+  const [tab, setTab] = useState<'growth' | 'mix'>('growth')
 
-  useEffect(() => {
-    let cancelled = false
-    async function run() {
-      setIsLoading(true)
-      setError(null)
-      try {
-        const d = await analyticsDashboard()
-        if (!cancelled) setData(d)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Gagal load analytics'
-        if (!cancelled) setError(msg)
-        const is404 =
-          String(msg).toLowerCase().includes('status code 404') ||
-          String(msg).toLowerCase().includes('http 404') ||
-          String(msg).toLowerCase().includes('not found')
-        if (!is404) {
-          toast.push({ kind: 'error', title: 'Gagal load analytics', message: msg })
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [manualSeq, refreshSeq, toast])
+  const growth = useMemo(() => buildClientGrowthSeries(clients, 30), [clients])
+  const mix = useMemo(() => buildAccountMix(clients), [clients])
 
-  const blended = data?.blended
-  const engagementRatePct = blended ? `${(blended.engagement_rate * 100).toFixed(2)}%` : '-'
+  const status = error ? 'OFF' : isLoading ? 'SYNC' : 'LIVE'
 
   return (
     <div>
-      {isLoading ? <div className="muted">Sinkron...</div> : null}
-      {error ? (
-        <DashNotice
-          {...prettyErrorMessage(error)}
-          actionLabel="Retry"
-          onAction={() => {
-            setManualSeq((v) => v + 1)
-          }}
-        />
-      ) : null}
-      {!isLoading && !error && data ? (
-        <div className="dash-kv">
-          <div className="dash-kv-row">
-            <div className="dash-kv-key">Date</div>
-            <div className="dash-kv-val">{data.date}</div>
-          </div>
-          <div className="dash-kv-row">
-            <div className="dash-kv-key">Clients</div>
-            <div className="dash-kv-val">{String(data.clients_count)}</div>
-          </div>
-          <div className="dash-kv-row">
-            <div className="dash-kv-key">Alerts 24h</div>
-            <div className="dash-kv-val">{String(data.alerts_last_24h)}</div>
-          </div>
-          <div className="dash-kv-row">
-            <div className="dash-kv-key">Followers</div>
-            <div className="dash-kv-val">{String(blended?.followers ?? 0)}</div>
-          </div>
-          <div className="dash-kv-row">
-            <div className="dash-kv-key">Impressions</div>
-            <div className="dash-kv-val">{String(blended?.impressions ?? 0)}</div>
-          </div>
-          <div className="dash-kv-row">
-            <div className="dash-kv-key">Engagement</div>
-            <div className="dash-kv-val">{engagementRatePct}</div>
+      <div className="dash-card-head">
+        <div className="dash-card-title">Client Growth</div>
+        <div className="dash-card-head-right">
+          <div className="dash-card-subtitle">{status}</div>
+          <div className="dash-tabs" role="tablist" aria-label="Client growth tabs">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'growth'}
+              className={tab === 'growth' ? 'dash-tab active' : 'dash-tab'}
+              onClick={() => setTab('growth')}
+            >
+              Growth
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'mix'}
+              className={tab === 'mix' ? 'dash-tab active' : 'dash-tab'}
+              onClick={() => setTab('mix')}
+            >
+              Donut
+            </button>
           </div>
         </div>
-      ) : null}
+      </div>
+
+      {error ? <DashNotice {...prettyErrorMessage(error)} /> : null}
+      {!error && isLoading ? <div className="muted">Sinkron...</div> : null}
+      {!error && !isLoading && clients.length === 0 ? <div className="muted">Belum ada client untuk dianalisa.</div> : null}
+
+      {!error && !isLoading ? (tab === 'growth' ? <ClientGrowthView growth={growth} /> : <ClientDonutView mix={mix} />) : null}
     </div>
   )
 }
 
-function UpcomingPostsCard({ refreshSeq }: { refreshSeq: number }) {
+function buildClientGrowthSeries(
+  clients: Client[],
+  days: number,
+): {
+  days: number
+  labels: string[]
+  tickLabels: string[]
+  dailyNew: number[]
+  cumulative: number[]
+  new30: number
+  new7: number
+  prev7: number
+} {
+  const safeDays = Math.max(2, Math.min(120, Math.floor(days || 30)))
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const start = new Date(today)
+  start.setDate(today.getDate() - (safeDays - 1))
+
+  const key = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+
+  const byDay = new Map<string, number>()
+  let baseCount = 0
+  for (const c of clients) {
+    const raw = (c.created_at ?? '').trim()
+    if (!raw) continue
+    const dt = new Date(raw)
+    if (Number.isNaN(dt.getTime())) continue
+    dt.setHours(0, 0, 0, 0)
+    if (dt.getTime() < start.getTime()) {
+      baseCount += 1
+      continue
+    }
+    const k = key(dt)
+    byDay.set(k, (byDay.get(k) ?? 0) + 1)
+  }
+
+  const labels: string[] = []
+  const dailyNew: number[] = []
+  const cumulative: number[] = []
+  let run = baseCount
+  for (let i = 0; i < safeDays; i++) {
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
+    const n = byDay.get(key(d)) ?? 0
+    run += n
+    labels.push(format(d, 'd MMM', { locale: idLocale }))
+    dailyNew.push(n)
+    cumulative.push(run)
+  }
+
+  const tickLabels = Array.from({ length: 12 }).map((_, i) => {
+    const idx = Math.round((i * (safeDays - 1)) / 11)
+    const d = new Date(start)
+    d.setDate(start.getDate() + idx)
+    return format(d, 'd MMM', { locale: idLocale })
+  })
+
+  const new30 = dailyNew.reduce((a, b) => a + b, 0)
+  const new7 = dailyNew.slice(-7).reduce((a, b) => a + b, 0)
+  const prev7 = dailyNew.slice(-14, -7).reduce((a, b) => a + b, 0)
+  return { days: safeDays, labels, tickLabels, dailyNew, cumulative, new30, new7, prev7 }
+}
+
+function buildAccountMix(
+  clients: Client[],
+): {
+  totalAccounts: number
+  totalClients: number
+  connectedClients: number
+  segments: Array<{ label: string; value: number; color: string }>
+  topLabel: string
+} {
+  const byPlatform = new Map<string, number>()
+  let totalAccounts = 0
+  let connectedClients = 0
+  for (const c of clients) {
+    const acc = c.social_accounts ?? []
+    for (const a of acc) {
+      if (!a.connected_at) continue
+      const p = String(a.platform || '').toLowerCase().trim() || 'other'
+      byPlatform.set(p, (byPlatform.get(p) ?? 0) + 1)
+      totalAccounts++
+    }
+    if (acc.some((a) => Boolean(a.connected_at))) connectedClients++
+  }
+
+  const sorted = [...byPlatform.entries()].sort((a, b) => b[1] - a[1])
+  const base = [
+    { key: 'instagram', label: 'Instagram', color: 'var(--dash-neon-purple)' },
+    { key: 'tiktok', label: 'TikTok', color: 'var(--dash-neon-teal)' },
+    { key: 'youtube', label: 'YouTube', color: 'var(--dash-neon-gold)' },
+    { key: 'facebook', label: 'Facebook', color: 'var(--dash-neon-blue)' },
+  ] as const
+
+  const picked = new Map<string, { label: string; value: number; color: string }>()
+  for (const b of base) {
+    const v = byPlatform.get(b.key) ?? 0
+    if (v > 0) picked.set(b.key, { label: b.label, value: v, color: b.color })
+  }
+
+  let other = 0
+  for (const [k, v] of sorted) {
+    if (picked.has(k)) continue
+    other += v
+  }
+
+  const segments = [...picked.values()]
+  if (other > 0) segments.push({ label: 'Other', value: other, color: 'rgba(120, 128, 160, 0.9)' })
+
+  const top = sorted[0]
+  const topLabel = top ? `${top[0]}` : '-'
+
+  return { totalAccounts, totalClients: clients.length, connectedClients, segments, topLabel }
+}
+
+function ClientGrowthView({
+  growth,
+}: {
+  growth: ReturnType<typeof buildClientGrowthSeries>
+}) {
+  const series = growth.cumulative
+  const last = series[series.length - 1] ?? 0
+  const delta = growth.new7 - growth.prev7
+  const deltaLabel = delta === 0 ? 'flat' : delta > 0 ? `+${delta}` : `${delta}`
+
+  const chart = useMemo(() => {
+    return buildLineChartPath(series, { width: 600, height: 220, padX: 14, padY: 16, bottomPad: 34 })
+  }, [series])
+
+  return (
+    <div className="dash-chart-wrap">
+      <div className="dash-growth-meta">
+        <div>
+          30D · +{growth.new30} new · 7D {growth.new7} ({deltaLabel} vs prev)
+        </div>
+        <div className="dash-growth-strong">Total {last}</div>
+      </div>
+      <svg className="dash-svg dash-growth-svg" viewBox="0 0 600 220" aria-label="Client growth chart" role="img">
+        <defs>
+          <linearGradient id="ts-growth-stroke" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="var(--dash-neon-teal)" stopOpacity="0.92" />
+            <stop offset="50%" stopColor="var(--dash-neon-purple)" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="var(--dash-neon-gold)" stopOpacity="0.88" />
+          </linearGradient>
+          <linearGradient id="ts-growth-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--dash-neon-purple)" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="var(--dash-neon-purple)" stopOpacity="0" />
+          </linearGradient>
+          <filter id="ts-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feColorMatrix
+              in="blur"
+              type="matrix"
+              values="
+                1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 0.35 0"
+              result="glow"
+            />
+            <feMerge>
+              <feMergeNode in="glow" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        {chart.grid.map((y, i) => (
+          <line key={i} x1="14" x2="586" y1={y} y2={y} className="dash-growth-grid" />
+        ))}
+
+        <path d={chart.areaPath} fill="url(#ts-growth-fill)" opacity="1" />
+        <path d={chart.path} fill="none" stroke="url(#ts-growth-stroke)" strokeWidth="3" filter="url(#ts-glow)" />
+
+        <circle cx={chart.lastPoint.x} cy={chart.lastPoint.y} r="4.5" fill="var(--dash-neon-gold)" />
+        <circle cx={chart.lastPoint.x} cy={chart.lastPoint.y} r="9" fill="var(--dash-neon-gold)" opacity="0.16" />
+      </svg>
+
+      <div className="dash-axis" aria-hidden="true">
+        {growth.tickLabels.map((t, i) => (
+          <div key={`${t}-${i}`} className="dash-axis-tick">
+            {i % 2 === 0 ? t : ''}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function buildLineChartPath(
+  values: number[],
+  opts: { width: number; height: number; padX: number; padY: number; bottomPad: number },
+): { path: string; areaPath: string; lastPoint: { x: number; y: number }; grid: number[] } {
+  const n = Math.max(2, values.length)
+  const width = Math.max(200, opts.width)
+  const height = Math.max(120, opts.height)
+  const padX = Math.max(0, opts.padX)
+  const padY = Math.max(0, opts.padY)
+  const bottomPad = Math.max(0, opts.bottomPad)
+  const innerW = Math.max(1, width - padX * 2)
+  const innerH = Math.max(1, height - padY - bottomPad)
+
+  const safe = values.length >= 2 ? values : [0, values[0] ?? 0]
+  const maxV = Math.max(1, ...safe)
+  const minV = Math.min(0, ...safe)
+  const span = Math.max(1, maxV - minV)
+  const stepX = innerW / (n - 1)
+
+  const pointAt = (i: number) => {
+    const v = safe[Math.min(safe.length - 1, i)] ?? 0
+    const x = padX + stepX * i
+    const y = padY + (1 - (v - minV) / span) * innerH
+    return { x, y }
+  }
+
+  const pts = Array.from({ length: n }, (_, i) => pointAt(i))
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ')
+
+  const baseY = padY + innerH
+  const area = `${d} L ${pts[pts.length - 1].x.toFixed(2)} ${baseY.toFixed(2)} L ${pts[0].x.toFixed(2)} ${baseY.toFixed(2)} Z`
+
+  const grid = Array.from({ length: 4 }).map((_, i) => {
+    const t = (i + 1) / 5
+    return padY + t * innerH
+  })
+
+  const lastPoint = pts[pts.length - 1]
+  return { path: d, areaPath: area, lastPoint, grid }
+}
+
+function ClientDonutView({
+  mix,
+}: {
+  mix: ReturnType<typeof buildAccountMix>
+}) {
+  const total = Math.max(0, mix.totalAccounts)
+  const radius = 92
+  const strokeW = 18
+  const cx = 110
+  const cy = 110
+  const circ = 2 * Math.PI * radius
+
+  let offset = 0
+  const segs = mix.segments.filter((s) => s.value > 0)
+  const hasData = total > 0 && segs.length > 0
+
+  const topPretty = useMemo(() => {
+    const s = String(mix.topLabel || '').trim()
+    if (!s) return '-'
+    if (s === 'instagram') return 'instagram'
+    if (s === 'tiktok') return 'tiktok'
+    if (s === 'youtube') return 'youtube'
+    if (s === 'facebook') return 'facebook'
+    return s
+  }, [mix.topLabel])
+
+  return (
+    <div className="dash-donut-wrap">
+      <div className="dash-donut-ring" aria-label="Account mix donut">
+        <svg className="dash-donut-svg" width="220" height="220" viewBox="0 0 220 220" aria-hidden="true">
+          <circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            stroke="rgba(120, 128, 160, 0.26)"
+            strokeWidth={strokeW}
+          />
+          {hasData
+            ? segs.map((s) => {
+                const segLen = (s.value / total) * circ
+                const dash = `${segLen} ${Math.max(0, circ - segLen)}`
+                const curOffset = offset
+                offset += segLen
+                return (
+                  <circle
+                    key={s.label}
+                    cx={cx}
+                    cy={cy}
+                    r={radius}
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth={strokeW}
+                    strokeDasharray={dash}
+                    strokeDashoffset={-curOffset}
+                    className="dash-donut-seg"
+                  />
+                )
+              })
+            : null}
+        </svg>
+        <div className="dash-donut-center">
+          <div className="dash-donut-value">{String(total)}</div>
+          <div className="dash-donut-label">accounts</div>
+        </div>
+      </div>
+
+      <div className="dash-donut-foot">
+        <div className="dash-donut-foot-item">
+          <div className="dash-donut-foot-key">Connected Clients</div>
+          <div className="dash-donut-foot-val">
+            {mix.connectedClients}/{mix.totalClients}
+          </div>
+        </div>
+        <div className="dash-donut-foot-item">
+          <div className="dash-donut-foot-key">Top Platform</div>
+          <div className="dash-donut-foot-val">{topPretty}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function UpcomingPostsCard({ refreshSeq, onOpenCalendar }: { refreshSeq: number; onOpenCalendar: () => void }) {
   const toast = useToast()
   const [rows, setRows] = useState<CalendarEvent[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -1398,13 +2488,15 @@ function UpcomingPostsCard({ refreshSeq }: { refreshSeq: number }) {
     }
   }, [manualSeq, refreshSeq, toast])
 
-  const sorted = useMemo(() => {
-    return [...rows].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()).slice(0, 6)
+  const sortedAll = useMemo(() => {
+    return [...rows].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
   }, [rows])
+
+  const preview = useMemo(() => sortedAll.slice(0, 6), [sortedAll])
 
   return (
     <div className="dash-rail">
-      <div className="dash-rail-meta">Horizon · 14 hari</div>
+      <div className="dash-rail-meta">Horizon · 14 hari · preview {Math.min(preview.length, 6)}/{sortedAll.length}</div>
       <div className="dash-rail-body">
         {isLoading ? <div className="muted">Sinkron...</div> : null}
         {!isLoading && error ? (
@@ -1416,10 +2508,10 @@ function UpcomingPostsCard({ refreshSeq }: { refreshSeq: number }) {
             }}
           />
         ) : null}
-        {!isLoading && !error && sorted.length === 0 ? <div className="muted">Belum ada post terjadwal</div> : null}
-        {!isLoading && !error && sorted.length > 0 ? (
+        {!isLoading && !error && preview.length === 0 ? <div className="muted">Belum ada post terjadwal</div> : null}
+        {!isLoading && !error && preview.length > 0 ? (
           <div className="dash-mini-list">
-            {sorted.map((e) => (
+            {preview.map((e) => (
               <div key={e.id} className="dash-mini-item">
                 <div className="dash-mini-name">{e.client_name}</div>
                 <div className="dash-mini-meta">
@@ -1429,6 +2521,11 @@ function UpcomingPostsCard({ refreshSeq }: { refreshSeq: number }) {
             ))}
           </div>
         ) : null}
+      </div>
+      <div className="dash-rail-actions">
+        <button type="button" className="dash-small-btn" onClick={onOpenCalendar}>
+          Open Calendar
+        </button>
       </div>
     </div>
   )
@@ -1564,11 +2661,36 @@ function ClientIntelModal({
   const [timelineError, setTimelineError] = useState<string | null>(null)
   const [timelineRows, setTimelineRows] = useState<ClientTimelineEvent[]>([])
   const [timelineSeq, setTimelineSeq] = useState(0)
+  const [timelineKind, setTimelineKind] = useState('all')
+  const [timelineQuery, setTimelineQuery] = useState('')
 
   const [pdfLoading, setPdfLoading] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
 
   const apiTarget = import.meta.env.VITE_API_TARGET || 'http://localhost:8080'
+
+  const timelineKinds = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of timelineRows) {
+      const k = String(r.kind || '').trim()
+      if (k) set.add(k)
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [timelineRows])
+
+  const filteredTimelineRows = useMemo(() => {
+    const kind = String(timelineKind || '').trim().toLowerCase()
+    const q = String(timelineQuery || '').trim().toLowerCase()
+    if (kind === 'all' && !q) return timelineRows
+    return timelineRows.filter((r) => {
+      const k = String(r.kind || '').toLowerCase()
+      if (kind !== 'all' && k !== kind) return false
+      if (!q) return true
+      const title = String(r.title || '').toLowerCase()
+      const meta = r.meta ? safeJSONStringify(r.meta).toLowerCase() : ''
+      return title.includes(q) || k.includes(q) || meta.includes(q)
+    })
+  }, [timelineKind, timelineQuery, timelineRows])
 
   useEffect(() => {
     if (!client) return
@@ -2007,8 +3129,18 @@ function ClientIntelModal({
                         setOfflineResult(null)
                         try {
                           const res = await createOfflineCampaign({ client_id: client.id, file: offlineFile })
-                          setOfflineResult(res.data)
-                          toast.push({ kind: 'success', title: 'Offline campaign extracted' })
+                          setOfflineResult({
+                            status: res.status,
+                            file_url: res.file_url,
+                            file_mime: res.file_mime,
+                            data: res.data,
+                          })
+                          const status = String(res.status || '').toLowerCase()
+                          if (status === 'extracted') {
+                            toast.push({ kind: 'success', title: 'Offline campaign extracted' })
+                          } else {
+                            toast.push({ kind: 'info', title: 'Offline Campaign', message: 'File tersimpan. AI belum aktif untuk extract.' })
+                          }
                           onDidMutate()
                         } catch (err) {
                           const msg = err instanceof Error ? err.message : 'Gagal extract offline campaign'
@@ -2055,6 +3187,25 @@ function ClientIntelModal({
                     >
                       {timelineLoading ? 'Loading...' : 'Refresh'}
                     </button>
+                    <label className="field" style={{ minWidth: 200 }}>
+                      <span>Filter</span>
+                      <select value={timelineKind} onChange={(e) => setTimelineKind(e.target.value)}>
+                        <option value="all">all</option>
+                        {timelineKinds.map((k) => (
+                          <option key={k} value={k}>
+                            {k}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field" style={{ minWidth: 240 }}>
+                      <span>Search</span>
+                      <input
+                        value={timelineQuery}
+                        onChange={(e) => setTimelineQuery(e.target.value)}
+                        placeholder="Cari: report / post / tiktok / token..."
+                      />
+                    </label>
                   </div>
 
                   {timelineLoading ? (
@@ -2070,17 +3221,39 @@ function ClientIntelModal({
                     <DashNotice title="Belum ada aktivitas" detail="Generate Competitor Insight, Offline Campaign, atau Report untuk mulai membentuk timeline." />
                   ) : (
                     <div className="dash-mini-list">
-                      {timelineRows.map((e, i) => {
+                      {filteredTimelineRows.map((e, i) => {
                         const t = new Date(e.created_at)
                         const timeLabel = Number.isNaN(t.getTime())
                           ? String(e.created_at)
                           : t.toLocaleString('id-ID', { hour12: false })
+                        const metaObj = (e.meta ?? {}) as Record<string, unknown>
                         const meta = e.meta ? safeJSONStringify(e.meta) : ''
                         const metaShort = meta.length > 480 ? meta.slice(0, 480) + '…' : meta
+                        const token = typeof metaObj.token === 'string' ? metaObj.token : null
+                        const viewURL =
+                          typeof metaObj.view_url === 'string' ? metaObj.view_url : token ? `/r/${token}` : null
+                        const downloadURL =
+                          typeof metaObj.download_url === 'string'
+                            ? metaObj.download_url
+                            : token
+                              ? `/r/${token}/download`
+                              : null
+                        const postId = typeof metaObj.id === 'string' ? metaObj.id : null
+                        const postStatus = typeof metaObj.status === 'string' ? metaObj.status : null
+                        const nextExecuteAt = typeof metaObj.next_execute_at === 'string' ? metaObj.next_execute_at : null
                         return (
                           <div key={`${e.kind}-${e.created_at}-${i}`} className="dash-mini-item">
                             <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                              <span className="dash-badge">{String(e.kind).toUpperCase()}</span>
+                              <span
+                                className="dash-badge"
+                                style={
+                                  e.kind === 'alert'
+                                    ? { borderColor: 'rgba(255, 90, 90, 0.55)', background: 'rgba(255, 40, 40, 0.14)' }
+                                    : undefined
+                                }
+                              >
+                                {String(e.kind).toUpperCase()}
+                              </span>
                               <span>{e.title}</span>
                               <span style={{ marginLeft: 'auto' }} className="muted">
                                 {timeLabel}
@@ -2089,6 +3262,127 @@ function ClientIntelModal({
                             {metaShort ? (
                               <div className="dash-mini-meta" style={{ whiteSpace: 'pre-wrap' }}>
                                 {metaShort}
+                              </div>
+                            ) : null}
+                            {e.kind === 'alert' ? (
+                              <div className="dash-actions" style={{ marginTop: 8, alignItems: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="dash-small-btn"
+                                  onClick={() => void downloadPDF()}
+                                >
+                                  Generate report
+                                </button>
+                                <button
+                                  type="button"
+                                  className="dash-small-btn"
+                                  onClick={() => {
+                                    setTab('competitor')
+                                    setPlanDays(7)
+                                    void generatePlan()
+                                  }}
+                                >
+                                  Convert to plan
+                                </button>
+                                <button
+                                  type="button"
+                                  className="dash-small-btn"
+                                  onClick={async () => {
+                                    try {
+                                      setTab('competitor')
+                                      setPlanDays(3)
+                                      setPlanScheduling(true)
+                                      setPlanScheduleError(null)
+                                      const res = await aiContentPlan({
+                                        client_id: client.id,
+                                        horizon_days: 3,
+                                        platforms: [planPlatform],
+                                      })
+                                      const items = (res.items ?? []).slice(0, 3)
+                                      if (!items.length) throw new Error('Plan kosong')
+                                      for (const it of items) {
+                                        const platform = String(it.platform || '').toLowerCase().trim()
+                                        if (platform === 'instagram') {
+                                          throw new Error('Instagram butuh media. Pilih platform facebook/x/tiktok untuk auto-schedule.')
+                                        }
+                                        const executeAt = computeExecuteAtISO(it.day, (it.time ?? planStartTime) || planStartTime)
+                                        if (!executeAt) throw new Error('Start date/time tidak valid')
+                                        const content = buildPostContentFromPlanItem(it)
+                                        if (!content) throw new Error('Plan item kosong')
+                                        const created = await createPost({ client_id: client.id, content, platforms: [platform] })
+                                        await schedulePost(created.id, executeAt)
+                                      }
+                                      setPlanItems(items)
+                                      toast.push({ kind: 'success', title: '3 posts terjadwal' })
+                                      onDidMutate()
+                                      setTimelineSeq((v) => v + 1)
+                                    } catch (err) {
+                                      const msg = err instanceof Error ? err.message : 'Gagal schedule 3 posts'
+                                      setPlanScheduleError(msg)
+                                      toast.push({ kind: 'error', title: 'Schedule 3 posts', message: msg })
+                                    } finally {
+                                      setPlanScheduling(false)
+                                    }
+                                  }}
+                                >
+                                  Schedule 3 posts
+                                </button>
+                              </div>
+                            ) : null}
+                            {e.kind === 'report_pdf' && (viewURL || downloadURL) ? (
+                              <div className="dash-actions" style={{ marginTop: 8 }}>
+                                {viewURL ? (
+                                  <button
+                                    type="button"
+                                    className="dash-small-btn"
+                                    onClick={() => {
+                                      const abs = /^https?:\/\//i.test(viewURL)
+                                        ? viewURL
+                                        : `${apiTarget}${viewURL.startsWith('/') ? viewURL : `/${viewURL}`}`
+                                      window.open(abs, '_blank', 'noopener,noreferrer')
+                                    }}
+                                  >
+                                    View
+                                  </button>
+                                ) : null}
+                                {downloadURL ? (
+                                  <button
+                                    type="button"
+                                    className="dash-small-btn"
+                                    onClick={() => {
+                                      const abs = /^https?:\/\//i.test(downloadURL)
+                                        ? downloadURL
+                                        : `${apiTarget}${downloadURL.startsWith('/') ? downloadURL : `/${downloadURL}`}`
+                                      window.open(abs, '_blank', 'noopener,noreferrer')
+                                    }}
+                                  >
+                                    Download
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {e.kind === 'post' && postId ? (
+                              <div className="dash-actions" style={{ marginTop: 8, alignItems: 'center' }}>
+                                {postStatus === 'scheduled' || postStatus === 'queued' ? (
+                                  <button
+                                    type="button"
+                                    className="dash-small-btn"
+                                    onClick={async () => {
+                                      try {
+                                        await publishNow(postId)
+                                        toast.push({ kind: 'success', title: 'Publish queued' })
+                                        onDidMutate()
+                                        setTimelineSeq((v) => v + 1)
+                                      } catch (err) {
+                                        const msg = err instanceof Error ? err.message : 'Gagal publish now'
+                                        toast.push({ kind: 'error', title: 'Publish now', message: msg })
+                                      }
+                                    }}
+                                  >
+                                    Publish now
+                                  </button>
+                                ) : null}
+                                {nextExecuteAt ? <span className="muted">Next: {nextExecuteAt}</span> : null}
                               </div>
                             ) : null}
                           </div>
@@ -2113,6 +3407,7 @@ function ClientsTable({
   limit,
   onOpenIntel,
   onConnectInstagram,
+  onConnectTikTok,
 }: {
   clients: Client[]
   isLoading: boolean
@@ -2120,6 +3415,7 @@ function ClientsTable({
   limit?: number
   onOpenIntel: (clientId: string) => void
   onConnectInstagram?: (clientId: string) => Promise<void>
+  onConnectTikTok?: (clientId: string) => Promise<void>
 }) {
   if (isLoading) {
     return (
@@ -2136,6 +3432,7 @@ function ClientsTable({
   if (error) return <div className="error">{error}</div>
 
   const rows = typeof limit === 'number' ? clients.slice(0, Math.max(0, limit)) : clients
+  const hasActions = Boolean(onConnectInstagram || onConnectTikTok)
 
   return (
     <div className="dash-table-wrap">
@@ -2146,13 +3443,13 @@ function ClientsTable({
             <th>Industry</th>
             <th>Platforms</th>
             <th>Connected</th>
-            {onConnectInstagram ? <th>Actions</th> : null}
+            {hasActions ? <th>Actions</th> : null}
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={onConnectInstagram ? 4 : 3} className="dash-td-muted">
+              <td colSpan={hasActions ? 5 : 4} className="dash-td-muted">
                 <div className="dash-empty">
                   <div className="dash-empty-illus" aria-hidden="true" />
                   <div className="dash-empty-title">Belum ada client</div>
@@ -2170,12 +3467,19 @@ function ClientsTable({
                   <td>{c.industry ? c.industry : '-'}</td>
                   <td>{platforms.length ? platforms.join(', ') : '-'}</td>
                   <td>{String(connected)}</td>
-                  {onConnectInstagram ? (
+                  {hasActions ? (
                     <td>
                       <div className="dash-actions">
-                        <button type="button" className="dash-small-btn" onClick={() => void onConnectInstagram(c.id)}>
-                          Connect IG
-                        </button>
+                        {onConnectInstagram ? (
+                          <button type="button" className="dash-small-btn" onClick={() => void onConnectInstagram(c.id)}>
+                            Connect IG
+                          </button>
+                        ) : null}
+                        {onConnectTikTok ? (
+                          <button type="button" className="dash-small-btn" onClick={() => void onConnectTikTok(c.id)}>
+                            Connect TikTok
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="dash-small-btn"
@@ -2644,10 +3948,19 @@ function PostsPanel({
   )
 }
 
-function AnalyticsPanel({ refreshSeq }: { refreshSeq: number }) {
+function AnalyticsPanel({
+  clients,
+  isLoading,
+  error,
+}: {
+  clients: Client[]
+  isLoading: boolean
+  error: string | null
+}) {
   return (
     <div className="dash-stack">
-      <AnalyticsSummaryCard refreshSeq={refreshSeq} />
+      <ClientGrowthSmartCard clients={clients} isLoading={isLoading} error={error} />
+      <TrendRadarPanel clients={clients} />
     </div>
   )
 }
@@ -2784,15 +4097,562 @@ function ReportsPanel({
   )
 }
 
-function OnboardingPanel({ onGoClients }: { onGoClients: () => void }) {
+export function OnboardingPanelLegacy({ onGoClients }: { onGoClients: () => void }) {
+  const toast = useToast()
+  const [source, setSource] = useState<'google' | 'exploding' | 'similarweb'>('google')
+
+  const [geo, setGeo] = useState('ID')
+  const [explodingCategory, setExplodingCategory] = useState('marketing')
+  const [explodingType, setExplodingType] = useState<'all' | 'regular' | 'exploding' | 'peaked'>('exploding')
+  const [domain, setDomain] = useState('chatgpt.com')
+  const [country, setCountry] = useState('us')
+
+  const [googleData, setGoogleData] = useState<GoogleTrendsResponse | null>(null)
+  const [explodingData, setExplodingData] = useState<ExplodingTopicsResponse | null>(null)
+  const [similarwebData, setSimilarwebData] = useState<SimilarwebTrafficResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [seq, setSeq] = useState(0)
+
+  const [captionPlatform, setCaptionPlatform] = useState<'facebook' | 'x' | 'tiktok'>('tiktok')
+  const [captionTone, setCaptionTone] = useState<'smart' | 'hype' | 'luxury'>('smart')
+  const [captionOpen, setCaptionOpen] = useState<string | null>(null)
+  const [captionLoading, setCaptionLoading] = useState(false)
+  const [captionError, setCaptionError] = useState<string | null>(null)
+  const [captionVariants, setCaptionVariants] = useState<string[] | null>(null)
+  const [hashtagsLoading, setHashtagsLoading] = useState(false)
+  const [hashtagsError, setHashtagsError] = useState<string | null>(null)
+  const [hashtags, setHashtags] = useState<string[] | null>(null)
+
+  const [watch, setWatch] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('trendspire.watchlist.trends')
+      const parsed = raw ? (JSON.parse(raw) as unknown) : []
+      if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === 'string').slice(0, 50)
+      return []
+    } catch {
+      return []
+    }
+  })
+
+  function setWatchPersist(next: string[]) {
+    const out = Array.from(new Set(next.map((s) => String(s || '').trim()).filter(Boolean))).slice(0, 50)
+    setWatch(out)
+    try {
+      localStorage.setItem('trendspire.watchlist.trends', JSON.stringify(out))
+    } catch {}
+  }
+
+  function toggleWatch(keyword: string) {
+    const k = String(keyword || '').trim()
+    if (!k) return
+    if (watch.includes(k)) {
+      setWatchPersist(watch.filter((x) => x !== k))
+      toast.push({ kind: 'info', title: 'Untracked', message: k })
+      return
+    }
+    setWatchPersist([k, ...watch])
+    toast.push({ kind: 'success', title: 'Tracked', message: k })
+  }
+
+  async function generateCaptions(keyword: string) {
+    const idea = String(keyword || '').trim()
+    if (!idea) return
+    setCaptionLoading(true)
+    setCaptionError(null)
+    setHashtags(null)
+    setHashtagsError(null)
+    setCaptionOpen(idea)
+    setCaptionVariants(null)
+    try {
+      const res = await aiCaption({ content_idea: idea, platform: captionPlatform, tone: captionTone })
+      setCaptionVariants(res.variants ?? [])
+      if (!res.variants?.length) setCaptionError('Tidak ada output')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal generate caption'
+      setCaptionError(msg)
+    } finally {
+      setCaptionLoading(false)
+    }
+  }
+
+  async function generateHashtagsFor(caption: string) {
+    const cap = String(caption || '').trim()
+    const niche = String(captionOpen || '').trim()
+    if (!cap || !niche) return
+    setHashtagsLoading(true)
+    setHashtagsError(null)
+    setHashtags(null)
+    try {
+      const res = await aiHashtags({ caption: cap, niche })
+      setHashtags(res.hashtags ?? [])
+      if (!res.hashtags?.length) setHashtagsError('Tidak ada output')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal generate hashtags'
+      setHashtagsError(msg)
+    } finally {
+      setHashtagsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    async function run() {
+      setIsLoading(true)
+      setError(null)
+      try {
+        if (source === 'google') {
+          const d = await googleTrendsTrending({ geo, limit: 10 })
+          if (!cancelled) setGoogleData(d)
+        } else if (source === 'exploding') {
+          const d = await explodingTopics({
+            limit: 10,
+            type: explodingType,
+            categories: explodingCategory ? [explodingCategory] : undefined,
+            sort: 'growth',
+            order: 'desc',
+            timeframe: 12,
+          })
+          if (!cancelled) setExplodingData(d)
+        } else {
+          const d = await similarwebTraffic({ domain, country })
+          if (!cancelled) setSimilarwebData(d)
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Gagal load intel feed'
+        if (!cancelled) setError(msg)
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [country, domain, explodingCategory, explodingType, geo, seq, source])
+
+  const debugURL =
+    source === 'google' ? googleData?.debug_url : source === 'exploding' ? explodingData?.debug_url : similarwebData?.debug_url
+
   return (
     <div className="dash-onboard">
       <div className="dash-onboard-hero">
-        <div className="dash-onboard-orb" aria-hidden="true" />
         <div className="dash-onboard-title">Find the Trend</div>
         <div className="dash-onboard-sub">Build · Schedule · Analyze · Report</div>
       </div>
       <FlowDiagram clientsCount={0} connectedAccounts={0} scheduledPosts={0} />
+      <div className="dash-form-card dash-trend-card">
+        <div className="dash-segment-title">Trend Radar</div>
+        <div className="dash-actions" style={{ alignItems: 'end' }}>
+          <label className="field" style={{ minWidth: 200 }}>
+            <span>Source</span>
+            <select value={source} onChange={(e) => setSource(e.target.value as 'google' | 'exploding' | 'similarweb')}>
+              <option value="google">Google Trends</option>
+              <option value="exploding">Exploding Topics</option>
+              <option value="similarweb">Similarweb</option>
+            </select>
+          </label>
+          {source === 'google' ? (
+            <label className="field" style={{ minWidth: 180 }}>
+              <span>Geo</span>
+              <select value={geo} onChange={(e) => setGeo(e.target.value)}>
+                <option value="ID">ID</option>
+                <option value="US">US</option>
+                <option value="GB">GB</option>
+                <option value="SG">SG</option>
+                <option value="AU">AU</option>
+                <option value="JP">JP</option>
+              </select>
+            </label>
+          ) : source === 'exploding' ? (
+            <>
+              <label className="field" style={{ minWidth: 220 }}>
+                <span>Category</span>
+                <select value={explodingCategory} onChange={(e) => setExplodingCategory(e.target.value)}>
+                  <option value="marketing">marketing</option>
+                  <option value="ai">ai</option>
+                  <option value="technology">technology</option>
+                  <option value="social-media">social-media</option>
+                  <option value="beauty">beauty</option>
+                  <option value="health">health</option>
+                  <option value="finance">finance</option>
+                  <option value="food-beverage">food-beverage</option>
+                </select>
+              </label>
+              <label className="field" style={{ minWidth: 180 }}>
+                <span>Type</span>
+                <select value={explodingType} onChange={(e) => setExplodingType(e.target.value as typeof explodingType)}>
+                  <option value="exploding">exploding</option>
+                  <option value="regular">regular</option>
+                  <option value="peaked">peaked</option>
+                  <option value="all">all</option>
+                </select>
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="field" style={{ minWidth: 240 }}>
+                <span>Domain</span>
+                <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.com" />
+              </label>
+              <label className="field" style={{ minWidth: 120 }}>
+                <span>Country</span>
+                <select value={country} onChange={(e) => setCountry(e.target.value)}>
+                  <option value="ww">ww</option>
+                  <option value="us">us</option>
+                  <option value="id">id</option>
+                  <option value="sg">sg</option>
+                  <option value="gb">gb</option>
+                </select>
+              </label>
+            </>
+          )}
+          <label className="field" style={{ minWidth: 150 }}>
+            <span>Platform</span>
+            <select value={captionPlatform} onChange={(e) => setCaptionPlatform(e.target.value as typeof captionPlatform)}>
+              <option value="tiktok">tiktok</option>
+              <option value="facebook">facebook</option>
+              <option value="x">x</option>
+            </select>
+          </label>
+          <label className="field" style={{ minWidth: 150 }}>
+            <span>Tone</span>
+            <select value={captionTone} onChange={(e) => setCaptionTone(e.target.value as typeof captionTone)}>
+              <option value="smart">smart</option>
+              <option value="luxury">luxury</option>
+              <option value="hype">hype</option>
+            </select>
+          </label>
+          <button type="button" className="dash-small-btn" disabled={isLoading} onClick={() => setSeq((v) => v + 1)}>
+            {isLoading ? 'Loading...' : 'Refresh'}
+          </button>
+          {debugURL ? (
+            <button
+              type="button"
+              className="dash-small-btn"
+              onClick={() => window.open(debugURL, '_blank', 'noopener,noreferrer')}
+            >
+              Open Source
+            </button>
+          ) : null}
+        </div>
+        {error ? (
+          <DashNotice
+            {...prettyErrorMessage(error)}
+            actionLabel="Retry"
+            onAction={() => setSeq((v) => v + 1)}
+          />
+        ) : null}
+        {isLoading ? (
+          <div className="dash-skeleton-list" aria-busy="true">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="dash-skeleton-row">
+                <div className="skeleton skeleton-line" />
+                <div className="skeleton skeleton-line short" />
+              </div>
+            ))}
+          </div>
+        ) : source === 'google' && googleData?.items?.length ? (
+          <div className="dash-mini-list" style={{ marginTop: 8 }}>
+            {googleData.items.slice(0, 10).map((it, i) => (
+              <div key={`${it.title}-${i}`} className="dash-mini-item">
+                <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <span className="dash-badge hot">HOT</span>
+                  <span>{it.title}</span>
+                  {it.approx_traffic ? (
+                    <span style={{ marginLeft: 'auto' }} className="muted">
+                      {it.approx_traffic}
+                    </span>
+                  ) : null}
+                </div>
+                {it.news?.length ? (
+                  <div className="dash-mini-meta">
+                    Top news: {it.news[0]?.source ? `${it.news[0].source} · ` : ''}
+                    {it.news[0]?.title ?? ''}
+                  </div>
+                ) : it.description ? (
+                  <div className="dash-mini-meta">{it.description}</div>
+                ) : null}
+                <div className="dash-actions" style={{ marginTop: 8 }}>
+                  {it.news?.[0]?.url ? (
+                    <button
+                      type="button"
+                      className="dash-small-btn"
+                      onClick={() => window.open(it.news?.[0]?.url ?? '', '_blank', 'noopener,noreferrer')}
+                    >
+                      Read
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="dash-small-btn"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(it.title)
+                        toast.push({ kind: 'success', title: 'Copied', message: 'Trend keyword disalin' })
+                      } catch {
+                        toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                      }
+                    }}
+                  >
+                    Copy keyword
+                  </button>
+                  <button type="button" className="dash-small-btn" onClick={() => toggleWatch(it.title)}>
+                    {watch.includes(it.title) ? 'Untrack' : 'Track'}
+                  </button>
+                  <button type="button" className="dash-small-btn" disabled={captionLoading && captionOpen === it.title} onClick={() => void generateCaptions(it.title)}>
+                    {captionLoading && captionOpen === it.title ? 'Generating...' : 'Captions'}
+                  </button>
+                </div>
+                {captionOpen === it.title ? (
+                  <div style={{ marginTop: 10 }}>
+                    {captionError ? <div className="error">{captionError}</div> : null}
+                    {captionVariants?.length ? (
+                      <div className="dash-mini-list">
+                        {captionVariants.slice(0, 4).map((v, idx) => (
+                          <div key={`${idx}-${v.slice(0, 12)}`} className="dash-mini-item">
+                            <div className="dash-mini-meta" style={{ whiteSpace: 'pre-wrap' }}>
+                              {v}
+                            </div>
+                            <div className="dash-actions" style={{ marginTop: 8 }}>
+                              <button
+                                type="button"
+                                className="dash-small-btn"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(v)
+                                    toast.push({ kind: 'success', title: 'Copied', message: 'Caption disalin' })
+                                  } catch {
+                                    toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                                  }
+                                }}
+                              >
+                                Copy caption
+                              </button>
+                              <button type="button" className="dash-small-btn" disabled={hashtagsLoading} onClick={() => void generateHashtagsFor(v)}>
+                                {hashtagsLoading ? 'Hashtags...' : 'Hashtags'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {hashtagsError ? <div className="error" style={{ marginTop: 8 }}>{hashtagsError}</div> : null}
+                    {hashtags?.length ? (
+                      <div className="dash-actions" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                        {hashtags.slice(0, 16).map((h) => (
+                          <button
+                            key={h}
+                            type="button"
+                            className="dash-small-btn"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(h)
+                                toast.push({ kind: 'success', title: 'Copied', message: h })
+                              } catch {
+                                toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                              }
+                            }}
+                          >
+                            {h}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : source === 'exploding' && explodingData?.items?.length ? (
+          <div className="dash-mini-list" style={{ marginTop: 8 }}>
+            {explodingData.items.slice(0, 10).map((row, i) => {
+              const r = row as Record<string, unknown>
+              const keyword = typeof r?.keyword === 'string' ? r.keyword : `Topic #${i + 1}`
+              const growth = typeof r?.growth === 'number' ? `${Math.round(r.growth)}%` : ''
+              const volume = typeof r?.absolute_volume === 'number' ? `${Math.round(r.absolute_volume)}/mo` : ''
+              return (
+                <div key={`${keyword}-${i}`} className="dash-mini-item">
+                  <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <span className="dash-badge early">EARLY</span>
+                    <span>{keyword}</span>
+                    <span style={{ marginLeft: 'auto' }} className="muted">
+                      {[growth, volume].filter(Boolean).join(' · ')}
+                    </span>
+                  </div>
+                  {typeof r?.description === 'string' && r.description ? <div className="dash-mini-meta">{r.description}</div> : null}
+                  <div className="dash-actions" style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="dash-small-btn"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(keyword)
+                          toast.push({ kind: 'success', title: 'Copied', message: 'Keyword disalin' })
+                        } catch {
+                          toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                        }
+                      }}
+                    >
+                      Copy keyword
+                    </button>
+                    <button type="button" className="dash-small-btn" onClick={() => toggleWatch(keyword)}>
+                      {watch.includes(keyword) ? 'Untrack' : 'Track'}
+                    </button>
+                    <button type="button" className="dash-small-btn" disabled={captionLoading && captionOpen === keyword} onClick={() => void generateCaptions(keyword)}>
+                      {captionLoading && captionOpen === keyword ? 'Generating...' : 'Captions'}
+                    </button>
+                  </div>
+                  {captionOpen === keyword ? (
+                    <div style={{ marginTop: 10 }}>
+                      {captionError ? <div className="error">{captionError}</div> : null}
+                      {captionVariants?.length ? (
+                        <div className="dash-mini-list">
+                          {captionVariants.slice(0, 4).map((v, idx) => (
+                            <div key={`${idx}-${v.slice(0, 12)}`} className="dash-mini-item">
+                              <div className="dash-mini-meta" style={{ whiteSpace: 'pre-wrap' }}>
+                                {v}
+                              </div>
+                              <div className="dash-actions" style={{ marginTop: 8 }}>
+                                <button
+                                  type="button"
+                                  className="dash-small-btn"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(v)
+                                      toast.push({ kind: 'success', title: 'Copied', message: 'Caption disalin' })
+                                    } catch {
+                                      toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                                    }
+                                  }}
+                                >
+                                  Copy caption
+                                </button>
+                                <button type="button" className="dash-small-btn" disabled={hashtagsLoading} onClick={() => void generateHashtagsFor(v)}>
+                                  {hashtagsLoading ? 'Hashtags...' : 'Hashtags'}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {hashtagsError ? <div className="error" style={{ marginTop: 8 }}>{hashtagsError}</div> : null}
+                      {hashtags?.length ? (
+                        <div className="dash-actions" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                          {hashtags.slice(0, 16).map((h) => (
+                            <button
+                              key={h}
+                              type="button"
+                              className="dash-small-btn"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(h)
+                                  toast.push({ kind: 'success', title: 'Copied', message: h })
+                                } catch {
+                                  toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                                }
+                              }}
+                            >
+                              {h}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        ) : source === 'similarweb' && similarwebData ? (
+          <div style={{ marginTop: 8 }}>
+            <div className="dash-mini-list">
+              <div className="dash-mini-item">
+                <div className="dash-mini-name" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <span className="dash-badge web">WEB</span>
+                  <span>{similarwebData.domain}</span>
+                  <span style={{ marginLeft: 'auto' }} className="muted">
+                    {similarwebData.country.toUpperCase()}
+                  </span>
+                </div>
+                {similarwebData.latest ? (
+                  <div className="dash-mini-meta">
+                    Visits: {similarwebData.latest.visits != null ? Math.round(similarwebData.latest.visits).toLocaleString() : '-'} ·
+                    Bounce: {similarwebData.latest.bounce_rate != null ? `${Math.round(similarwebData.latest.bounce_rate * 100)}%` : '-'} ·
+                    Pages/Visit: {similarwebData.latest.pages_per_visit != null ? similarwebData.latest.pages_per_visit.toFixed(2) : '-'}
+                  </div>
+                ) : (
+                  <div className="muted">No data.</div>
+                )}
+                <div className="dash-actions" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="dash-small-btn"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(similarwebData.domain)
+                        toast.push({ kind: 'success', title: 'Copied', message: 'Domain disalin' })
+                      } catch {
+                        toast.push({ kind: 'error', title: 'Gagal copy', message: 'Coba copy manual' })
+                      }
+                    }}
+                  >
+                    Copy domain
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="muted">
+            {source === 'exploding'
+              ? 'Butuh EXPLODING_TOPICS_API_KEY di environment.'
+              : source === 'similarweb'
+                ? 'Butuh SIMILARWEB_API_KEY di environment.'
+                : 'Belum ada data trend.'}
+          </div>
+        )}
+
+        {watch.length ? (
+          <div style={{ marginTop: 14 }}>
+            <div className="dash-segment-title" style={{ fontSize: 14 }}>
+              Watchlist
+            </div>
+            <div className="dash-actions" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+              {watch.slice(0, 16).map((k) => (
+                <button key={k} type="button" className="dash-small-btn" onClick={() => void generateCaptions(k)}>
+                  {k}
+                </button>
+              ))}
+              <button type="button" className="dash-small-btn" onClick={() => setWatchPersist([])}>
+                Clear
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+      <div className="dash-form-card">
+        <div className="dash-segment-title">Intelligence Setup</div>
+        <div className="muted">Buat client dulu (isi Industry), baru Competitor Insight & Offline Campaign bisa jalan.</div>
+        <div className="dash-actions" style={{ marginTop: 10 }}>
+          <button type="button" className="dash-small-btn" onClick={onGoClients}>
+            Create Client
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function OnboardingPanel({ onGoClients }: { onGoClients: () => void }) {
+  return (
+    <div className="dash-onboard">
+      <div className="dash-onboard-hero">
+        <div className="dash-onboard-title">Find the Trend</div>
+        <div className="dash-onboard-sub">Build · Schedule · Analyze · Report</div>
+      </div>
+      <FlowDiagram clientsCount={0} connectedAccounts={0} scheduledPosts={0} />
+      <TrendRadarPanel clients={[]} />
       <div className="dash-form-card">
         <div className="dash-segment-title">Intelligence Setup</div>
         <div className="muted">Buat client dulu (isi Industry), baru Competitor Insight & Offline Campaign bisa jalan.</div>
@@ -2884,70 +4744,160 @@ function ClientIntelQuickPanel({
   )
 }
 
-function GuideModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function SettingsPanel({
+  agency,
+  userRole,
+  theme,
+  onThemeChange,
+  onSaved,
+}: {
+  agency: { id: string; name: string; logo_url?: string; primary_color?: string } | null
+  userRole: string
+  theme: 'system' | 'light' | 'dark'
+  onThemeChange: (v: 'system' | 'light' | 'dark') => void
+  onSaved: (agency: { id: string; name: string; logo_url?: string; primary_color?: string }) => void
+}) {
+  const toast = useToast()
+  const [name, setName] = useState(agency?.name ?? '')
+  const [logoURL, setLogoURL] = useState(agency?.logo_url ?? '')
+  const [primaryColor, setPrimaryColor] = useState(agency?.primary_color ?? '#5b00ff')
+  const [isSaving, setIsSaving] = useState(false)
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
-    if (!open) return
+    setName(agency?.name ?? '')
+    setLogoURL(agency?.logo_url ?? '')
+    setPrimaryColor(agency?.primary_color ?? '#5b00ff')
+  }, [agency?.id, agency?.logo_url, agency?.name, agency?.primary_color])
 
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+  const canEdit = userRole === 'owner' || userRole === 'admin'
 
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+  async function save() {
+    if (!canEdit) {
+      toast.push({ kind: 'error', title: 'Tidak punya akses', message: 'Role kamu tidak bisa mengubah settings.' })
+      return
     }
-    window.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      document.body.style.overflow = prevOverflow
-      window.removeEventListener('keydown', onKeyDown)
+    setIsSaving(true)
+    setError(null)
+    try {
+      const res = await updateAgency({
+        name: name.trim() || undefined,
+        logo_url: logoURL.trim() || undefined,
+        primary_color: primaryColor.trim() || undefined,
+      })
+      onSaved(res)
+      toast.push({ kind: 'success', title: 'Settings tersimpan' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal simpan settings'
+      setError(msg)
+      toast.push({ kind: 'error', title: 'Gagal simpan', message: msg })
+    } finally {
+      setIsSaving(false)
     }
-  }, [open, onClose])
+  }
 
-  if (!open) return null
+  async function uploadLogo(file: File) {
+    if (!canEdit) {
+      toast.push({ kind: 'error', title: 'Tidak punya akses', message: 'Role kamu tidak bisa mengubah settings.' })
+      return
+    }
+    setIsUploadingLogo(true)
+    setError(null)
+    try {
+      const res = await uploadAgencyLogo(file)
+      onSaved(res)
+      setLogoURL(res.logo_url ?? '')
+      toast.push({ kind: 'success', title: 'Logo tersimpan' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal upload logo'
+      setError(msg)
+      toast.push({ kind: 'error', title: 'Gagal upload logo', message: msg })
+    } finally {
+      setIsUploadingLogo(false)
+    }
+  }
 
   return (
-    <div
-      className="dash-modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Tentang & panduan"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className="dash-modal" role="document">
-        <div className="dash-modal-head">
-          <div>
-            <div className="dash-modal-title">Tentang & panduan</div>
-            <div className="dash-modal-sub">Flow singkat biar client kamu tinggal pakai.</div>
+    <div className="dash-stack">
+      <div className="dash-form-card">
+        <div className="dash-segment-title">Brand</div>
+        <div className="muted">Ubah nama perusahaan/agency, logo, dan warna aksen untuk report.</div>
+        <div className="dash-actions" style={{ marginTop: 10, alignItems: 'end' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 220 }}>
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                border: '1px solid var(--dash-border)',
+                overflow: 'hidden',
+                background: 'var(--dash-soft-bg)',
+                display: 'grid',
+                placeItems: 'center',
+                fontWeight: 900,
+              }}
+            >
+              {logoURL.trim() ? <img src={logoURL.trim()} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '—'}
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <div className="muted">Logo file</div>
+              <input
+                type="file"
+                accept="image/*"
+                disabled={!canEdit || isUploadingLogo}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  void uploadLogo(f)
+                  e.currentTarget.value = ''
+                }}
+              />
+            </div>
           </div>
-          <button type="button" className="dash-modal-close" onClick={onClose}>
-            Tutup
+          <label className="field" style={{ minWidth: 240, flex: 1 }}>
+            <span>Company Name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama perusahaan" />
+          </label>
+          <label className="field" style={{ minWidth: 340, flex: 2 }}>
+            <span>Logo URL</span>
+            <input value={logoURL} onChange={(e) => setLogoURL(e.target.value)} placeholder="/trendspire-logo.png atau https://..." />
+          </label>
+        </div>
+        <div className="dash-actions" style={{ marginTop: 10, alignItems: 'end' }}>
+          <label className="field" style={{ minWidth: 220 }}>
+            <span>Primary Color</span>
+            <div className="dash-actions" style={{ gap: 10 }}>
+              <input
+                type="color"
+                value={primaryColor}
+                onChange={(e) => setPrimaryColor(e.target.value)}
+                style={{ width: 54, height: 38, padding: 0, borderRadius: 10 }}
+              />
+              <input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} />
+            </div>
+          </label>
+          <button type="button" className="dash-small-btn" disabled={!canEdit || isSaving} onClick={() => void save()}>
+            {isSaving ? 'Saving...' : 'Save'}
           </button>
         </div>
-
-        <div className="dash-modal-body">
-          <div className="dash-guide-grid">
-            <div className="dash-guide-card">
-              <div className="dash-guide-title">1) Tambah client</div>
-              <div className="dash-guide-meta">Masuk Clients → isi Name → Create.</div>
-            </div>
-            <div className="dash-guide-card">
-              <div className="dash-guide-title">2) Connect Instagram</div>
-              <div className="dash-guide-meta">Clients → Connect IG → login Meta/IG → kembali ke dashboard.</div>
-            </div>
-            <div className="dash-guide-card">
-              <div className="dash-guide-title">3) Generate report</div>
-              <div className="dash-guide-meta">Reports → pilih client → Generate & Open.</div>
-            </div>
-            <div className="dash-guide-card">
-              <div className="dash-guide-title">4) Share magic link</div>
-              <div className="dash-guide-meta">Klik Copy Link → kirim ke client. Link bisa dibuka tanpa login.</div>
-            </div>
-          </div>
-
-          <div className="dash-guide-note">
-            Kalau login kelempar lagi ke halaman login: token expired/unauthorized → login ulang.
-          </div>
+        {error ? <DashNotice {...prettyErrorMessage(error)} /> : null}
+      </div>
+      <div className="dash-form-card">
+        <div className="dash-segment-title">Appearance</div>
+        <div className="muted">Atur tampilan dashboard kamu.</div>
+        <div className="dash-actions" style={{ marginTop: 10, alignItems: 'end' }}>
+          <label className="field" style={{ minWidth: 260 }}>
+            <span>Theme</span>
+            <select
+              value={theme}
+              onChange={(e) => onThemeChange((e.target.value as 'system' | 'light' | 'dark') || 'system')}
+            >
+              <option value="system">Auto (System)</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
         </div>
       </div>
     </div>

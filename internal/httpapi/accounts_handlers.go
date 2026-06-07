@@ -153,9 +153,6 @@ func (h AccountsHandler) Callback(c *gin.Context) {
 	err = h.db.Transaction(func(tx *gorm.DB) error {
 		var existing models.SocialAccount
 		q := tx.Where("client_id = ? AND platform = ?", st.ClientID, platform)
-		if strings.TrimSpace(tokenRes.ExternalAccountID) != "" {
-			q = q.Where("external_account_id = ?", strings.TrimSpace(tokenRes.ExternalAccountID))
-		}
 		err := q.Order("created_at desc").First(&existing).Error
 		if err == nil {
 			existing.AccessToken = encAccess
@@ -191,7 +188,26 @@ func (h AccountsHandler) Callback(c *gin.Context) {
 			FollowersCount:    tokenRes.FollowerCount,
 		}
 		if err := tx.Create(&newRow).Error; err != nil {
-			return err
+			var fallbackExisting models.SocialAccount
+			if err2 := tx.Where("client_id = ? AND platform = ?", st.ClientID, platform).First(&fallbackExisting).Error; err2 != nil {
+				return err
+			}
+			fallbackExisting.AccessToken = encAccess
+			fallbackExisting.RefreshToken = encRefresh
+			fallbackExisting.ExpiresAt = tokenRes.ExpiresAtUTC
+			fallbackExisting.ConnectedAt = &now
+			if tokenRes.Username != "" {
+				fallbackExisting.Username = tokenRes.Username
+			}
+			if tokenRes.ExternalAccountID != "" {
+				fallbackExisting.ExternalAccountID = tokenRes.ExternalAccountID
+			}
+			fallbackExisting.FollowersCount = tokenRes.FollowerCount
+			if err := tx.Save(&fallbackExisting).Error; err != nil {
+				return err
+			}
+			saved = fallbackExisting
+			return nil
 		}
 		saved = newRow
 		return nil

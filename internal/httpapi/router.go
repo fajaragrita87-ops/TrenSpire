@@ -37,6 +37,10 @@ func NewRouter(cfg config.Config, gormDB *gorm.DB) *gin.Engine {
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/refresh", authHandler.Refresh)
+			auth.GET("/google/start", authHandler.GoogleStart)
+			auth.GET("/google/callback", authHandler.GoogleCallback)
+			auth.POST("/whatsapp/request-otp", authHandler.WhatsAppRequestOTP)
+			auth.POST("/whatsapp/verify-otp", authHandler.WhatsAppVerifyOTP)
 		}
 
 		v1.GET("/accounts/:platform/callback", accountsHandler.Callback)
@@ -45,6 +49,7 @@ func NewRouter(cfg config.Config, gormDB *gorm.DB) *gin.Engine {
 		protected.Use(RequireJWT(cfg.Auth))
 		{
 			protected.GET("/health", healthHandler.Health)
+			protected.GET("/auth/me", authHandler.Me)
 
 			clientsHandler := NewClientsHandler(gormDB)
 			postsHandler := NewPostsHandler(cfg, gormDB)
@@ -53,9 +58,12 @@ func NewRouter(cfg config.Config, gormDB *gorm.DB) *gin.Engine {
 			offlineHandler := NewOfflineHandler(cfg, gormDB)
 			analyticsHandler := NewAnalyticsHandler(cfg, gormDB)
 			reportsHandler := NewReportsHandler(cfg, gormDB)
+			trendsHandler := NewTrendsHandler()
 			admin := protected.Group("")
 			admin.Use(RequireRole("owner", "admin"))
 			{
+				admin.PATCH("/agency", authHandler.UpdateAgency)
+				admin.POST("/agency/logo", authHandler.UploadAgencyLogo)
 				admin.POST("/clients", clientsHandler.CreateClient)
 				admin.GET("/clients", clientsHandler.ListClients)
 				admin.PATCH("/clients/:id", clientsHandler.UpdateClient)
@@ -70,10 +78,14 @@ func NewRouter(cfg config.Config, gormDB *gorm.DB) *gin.Engine {
 				admin.POST("/ai/caption", aiHandler.Caption)
 				admin.POST("/ai/hashtags", aiHandler.Hashtags)
 				admin.POST("/ai/content-plan", aiHandler.ContentPlan)
+				admin.POST("/ai/trend-plan", aiHandler.TrendPlan)
 				admin.POST("/competitor/analyze", competitorHandler.Analyze)
 				admin.POST("/offline/campaigns", offlineHandler.CreateCampaign)
 				admin.GET("/analytics/clients/:id", analyticsHandler.ClientAnalytics)
 				admin.GET("/analytics/dashboard", analyticsHandler.Dashboard)
+				admin.GET("/trends/google", trendsHandler.GoogleTrending)
+				admin.GET("/trends/exploding", trendsHandler.ExplodingTopics)
+				admin.GET("/trends/similarweb/traffic", trendsHandler.SimilarwebTraffic)
 				admin.POST("/reports", reportsHandler.CreateReport)
 				admin.GET("/reports", reportsHandler.ListReports)
 				admin.POST("/reports/:token/refresh", reportsHandler.Refresh)

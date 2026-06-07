@@ -17,6 +17,7 @@ export type AuthAgency = {
   id: string
   name: string
   logo_url?: string
+  primary_color?: string
 }
 
 type AuthState = {

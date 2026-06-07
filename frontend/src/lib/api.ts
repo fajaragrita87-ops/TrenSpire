@@ -19,6 +19,7 @@ export type LoginResponse = {
     id: string
     name: string
     logo_url?: string
+    primary_color?: string
   }
 }
 
@@ -296,6 +297,93 @@ export async function login(email: string, password: string): Promise<LoginRespo
   }
 }
 
+export async function authMe(): Promise<{ user: LoginResponse['user']; agency: LoginResponse['agency'] }> {
+  try {
+    const res = await http.get<{ user: LoginResponse['user']; agency: LoginResponse['agency'] }>('/api/v1/auth/me')
+    return res.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export async function register(input: {
+  agency_name: string
+  email: string
+  password: string
+  name?: string
+  logo_url?: string
+  primary_color?: string
+}): Promise<LoginResponse> {
+  try {
+    const res = await http.post<LoginResponse>(
+      '/api/v1/auth/register',
+      input,
+      { auth: false } as ApiConfig,
+    )
+    setAccessToken(res.data.access_token)
+    setRefreshToken(res.data.refresh_token)
+    return res.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export async function authGoogleStart(input?: {
+  mode?: 'login' | 'register'
+  agency_name?: string
+  name?: string
+}): Promise<{ auth_url: string }> {
+  try {
+    const params: Record<string, string> = {}
+    if (input?.mode) params.mode = input.mode
+    if (input?.agency_name) params.agency_name = input.agency_name
+    if (input?.name) params.name = input.name
+    const res = await http.get<{ auth_url: string }>('/api/v1/auth/google/start', {
+      params,
+      auth: false,
+    } as ApiConfig)
+    return res.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export async function authWhatsAppRequestOTP(input: { phone: string }): Promise<{
+  sent: boolean
+  expires_in_sec: number
+  dev_code?: string
+}> {
+  try {
+    const res = await http.post<{ sent: boolean; expires_in_sec: number; dev_code?: string }>(
+      '/api/v1/auth/whatsapp/request-otp',
+      input,
+      { auth: false } as ApiConfig,
+    )
+    return res.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export async function authWhatsAppVerifyOTP(input: {
+  mode: 'login' | 'register'
+  phone: string
+  otp: string
+  agency_name?: string
+  name?: string
+  logo_url?: string
+  primary_color?: string
+}): Promise<LoginResponse> {
+  try {
+    const res = await http.post<LoginResponse>('/api/v1/auth/whatsapp/verify-otp', input, { auth: false } as ApiConfig)
+    setAccessToken(res.data.access_token)
+    setRefreshToken(res.data.refresh_token)
+    return res.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
 export async function listClients(): Promise<Client[]> {
   try {
     const res = await http.get<{ data: Client[] }>('/api/v1/clients')
@@ -452,9 +540,24 @@ export async function aiContentPlan(input: {
   client_id: string
   horizon_days?: number
   platforms?: string[]
+  seed_keyword?: string
 }): Promise<ContentPlanResponse> {
   try {
     const res = await http.post<ContentPlanResponse>('/api/v1/ai/content-plan', input)
+    return res.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export async function aiTrendPlan(input: {
+  keyword: string
+  horizon_days?: number
+  platforms?: string[]
+  tone?: string
+}): Promise<ContentPlanResponse> {
+  try {
+    const res = await http.post<ContentPlanResponse>('/api/v1/ai/trend-plan', input)
     return res.data
   } catch (err) {
     throw new Error(getErrorMessage(err), { cause: err })
@@ -477,6 +580,125 @@ export async function listReports(input?: { limit?: number; client_id?: string }
     if (input?.client_id) params.client_id = input.client_id
     const res = await http.get<{ data: ReportListItem[] }>('/api/v1/reports', { params })
     return res.data.data ?? []
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export type AgencyUpdateResponse = {
+  id: string
+  name: string
+  logo_url?: string
+  primary_color?: string
+}
+
+export async function updateAgency(input: { name?: string; logo_url?: string; primary_color?: string }): Promise<AgencyUpdateResponse> {
+  try {
+    const res = await http.patch<AgencyUpdateResponse>('/api/v1/agency', input)
+    return res.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export async function uploadAgencyLogo(file: File): Promise<AgencyUpdateResponse> {
+  try {
+    const fd = new FormData()
+    fd.append('logo', file)
+    const res = await http.post<AgencyUpdateResponse>('/api/v1/agency/logo', fd)
+    return res.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export type GoogleTrendsItem = {
+  title: string
+  approx_traffic?: string
+  pub_date?: string
+  description?: string
+  picture?: string
+  picture_source?: string
+  news?: Array<{ title: string; url: string; source: string; snippet: string }>
+}
+
+export type GoogleTrendsResponse = {
+  source: string
+  geo: string
+  title: string
+  fetched_at: string
+  debug_url: string
+  items: GoogleTrendsItem[]
+}
+
+export async function googleTrendsTrending(input?: { geo?: string; limit?: number }): Promise<GoogleTrendsResponse> {
+  try {
+    const params: Record<string, string | number> = {}
+    if (input?.geo) params.geo = input.geo
+    if (input?.limit) params.limit = input.limit
+    const res = await http.get<{ data: GoogleTrendsResponse }>('/api/v1/trends/google', { params })
+    return res.data.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export type ExplodingTopicsResponse = {
+  source: string
+  fetched_at: string
+  debug_url: string
+  items: unknown[]
+}
+
+export async function explodingTopics(input?: {
+  limit?: number
+  type?: string
+  categories?: string[]
+  timeframe?: number
+  sort?: string
+  order?: string
+}): Promise<ExplodingTopicsResponse> {
+  try {
+    const params: Record<string, string | number> = {}
+    if (input?.limit) params.limit = input.limit
+    if (input?.type) params.type = input.type
+    if (input?.timeframe) params.timeframe = input.timeframe
+    if (input?.sort) params.sort = input.sort
+    if (input?.order) params.order = input.order
+    if (input?.categories?.length) params.categories = input.categories.join(',')
+    const res = await http.get<{ data: ExplodingTopicsResponse }>('/api/v1/trends/exploding', { params })
+    return res.data.data
+  } catch (err) {
+    throw new Error(getErrorMessage(err), { cause: err })
+  }
+}
+
+export type SimilarwebTrafficRow = {
+  date: string
+  visits?: number | null
+  bounce_rate?: number | null
+  average_visit_duration?: number | null
+  pages_per_visit?: number | null
+  page_views?: number | null
+  unique_visitors?: number | null
+}
+
+export type SimilarwebTrafficResponse = {
+  source: string
+  domain: string
+  country: string
+  fetched_at: string
+  debug_url: string
+  latest?: SimilarwebTrafficRow
+  raw: { meta: unknown; data: SimilarwebTrafficRow[] }
+}
+
+export async function similarwebTraffic(input: { domain: string; country?: string }): Promise<SimilarwebTrafficResponse> {
+  try {
+    const params: Record<string, string> = { domain: input.domain }
+    if (input.country) params.country = input.country
+    const res = await http.get<{ data: SimilarwebTrafficResponse }>('/api/v1/trends/similarweb/traffic', { params })
+    return res.data.data
   } catch (err) {
     throw new Error(getErrorMessage(err), { cause: err })
   }

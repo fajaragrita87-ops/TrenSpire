@@ -12,6 +12,7 @@ type Config struct {
 	Auth   AuthConfig
 	Crypto CryptoConfig
 	OAuth  OAuthConfig
+	WhatsApp WhatsAppConfig
 	AI     AIConfig
 	Queue  QueueConfig
 	Storage StorageConfig
@@ -45,6 +46,7 @@ type CryptoConfig struct {
 
 type OAuthConfig struct {
 	PublicBaseURL string
+	FrontendBaseURL string
 
 	MetaAppID     string
 	MetaAppSecret string
@@ -54,6 +56,14 @@ type OAuthConfig struct {
 
 	XClientID     string
 	XClientSecret string
+
+	GoogleClientID     string
+	GoogleClientSecret string
+}
+
+type WhatsAppConfig struct {
+	Token         string
+	PhoneNumberID string
 }
 
 type AIConfig struct {
@@ -103,6 +113,7 @@ func Load() Config {
 		},
 		OAuth: OAuthConfig{
 			PublicBaseURL: getEnv("PUBLIC_BASE_URL", "http://localhost:8080"),
+			FrontendBaseURL: getEnv("FRONTEND_BASE_URL", "http://localhost:5173"),
 
 			MetaAppID:     os.Getenv("META_APP_ID"),
 			MetaAppSecret: os.Getenv("META_APP_SECRET"),
@@ -112,6 +123,13 @@ func Load() Config {
 
 			XClientID:     os.Getenv("X_CLIENT_ID"),
 			XClientSecret: os.Getenv("X_CLIENT_SECRET"),
+
+			GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+			GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		},
+		WhatsApp: WhatsAppConfig{
+			Token:         os.Getenv("WHATSAPP_TOKEN"),
+			PhoneNumberID: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"),
 		},
 		AI: AIConfig{
 			OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),

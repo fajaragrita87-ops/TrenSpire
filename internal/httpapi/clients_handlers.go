@@ -194,13 +194,17 @@ func (h ClientsHandler) Timeline(c *gin.Context) {
 		Limit(limit).
 		Find(&reps).Error
 	for _, r := range reps {
+		viewURL := "/r/" + strings.TrimSpace(r.Token)
+		downloadURL := viewURL + "/download"
 		out = append(out, timelineEvent{
 			Kind:      "report_pdf",
 			Title:     "Report PDF generated",
 			CreatedAt: r.CreatedAt,
 			Meta: map[string]any{
-				"token":   r.Token,
-				"pdf_url": r.PDFURL,
+				"token":        r.Token,
+				"pdf_url":      r.PDFURL,
+				"view_url":     viewURL,
+				"download_url": downloadURL,
 			},
 		})
 	}
@@ -215,17 +219,84 @@ func (h ClientsHandler) Timeline(c *gin.Context) {
 		Order("created_at desc").
 		Limit(postLimit).
 		Find(&posts).Error
+
+	postIDs := make([]uuid.UUID, 0, len(posts))
+	for _, p := range posts {
+		if p.ID != uuid.Nil {
+			postIDs = append(postIDs, p.ID)
+		}
+	}
+
+	nextByPost := map[string]string{}
+	if len(postIDs) > 0 {
+		type row struct {
+			PostID    uuid.UUID `gorm:"column:post_id"`
+			ExecuteAt time.Time `gorm:"column:execute_at"`
+		}
+		rows := []row{}
+		_ = h.db.Raw(
+			`select post_id, min(execute_at) as execute_at
+			   from schedules
+			  where post_id in ?
+			    and status in ?
+			    and execute_at >= ?
+			  group by post_id`,
+			postIDs,
+			[]string{"scheduled", "queued"},
+			time.Now().UTC(),
+		).Scan(&rows).Error
+		for _, r := range rows {
+			if r.PostID == uuid.Nil || r.ExecuteAt.IsZero() {
+				continue
+			}
+			nextByPost[r.PostID.String()] = r.ExecuteAt.UTC().Format(time.RFC3339)
+		}
+	}
+
 	for _, p := range posts {
 		var platforms []string
 		_ = json.Unmarshal(p.Platforms, &platforms)
+		meta := map[string]any{
+			"id":        p.ID.String(),
+			"status":    p.Status,
+			"platforms": platforms,
+		}
+		if next, ok := nextByPost[p.ID.String()]; ok {
+			meta["next_execute_at"] = next
+		}
 		out = append(out, timelineEvent{
 			Kind:      "post",
 			Title:     "Post created",
 			CreatedAt: p.CreatedAt,
+			Meta:      meta,
+		})
+	}
+
+	var alerts []models.AnalyticsAlert
+	_ = h.db.
+		Where("agency_id = ? AND client_id = ?", authCtx.AgencyID, cl.ID).
+		Order("created_at desc").
+		Limit(limit).
+		Find(&alerts).Error
+	for _, a := range alerts {
+		pct := a.ChangePct * 100.0
+		sign := ""
+		if pct > 0 {
+			sign = "+"
+		}
+		title := "Alert: " + strings.TrimSpace(a.Metric) + " " + sign + strconv.FormatFloat(pct, 'f', 1, 64) + "% (" + strings.TrimSpace(a.Platform) + ")"
+		out = append(out, timelineEvent{
+			Kind:      "alert",
+			Title:     title,
+			CreatedAt: a.CreatedAt,
 			Meta: map[string]any{
-				"id":        p.ID.String(),
-				"status":    p.Status,
-				"platforms": platforms,
+				"id":         a.ID.String(),
+				"platform":   a.Platform,
+				"metric":     a.Metric,
+				"prev_value": a.PrevValue,
+				"value":      a.Value,
+				"change_pct": a.ChangePct,
+				"date":       a.Date.UTC().Format("2006-01-02"),
 			},
 		})
 	}

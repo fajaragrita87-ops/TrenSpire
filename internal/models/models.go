@@ -24,6 +24,8 @@ type AgencyUser struct {
 	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	AgencyID     uuid.UUID `gorm:"type:uuid;not null;index"`
 	Email        string    `gorm:"type:text;not null;uniqueIndex"`
+	Phone        string    `gorm:"type:text;uniqueIndex"`
+	GoogleSub    string    `gorm:"type:text;uniqueIndex"`
 	PasswordHash string    `gorm:"type:text;not null"`
 	Role         string    `gorm:"type:text;not null;default:member"`
 	Name         string    `gorm:"type:text"`

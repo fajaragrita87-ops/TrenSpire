@@ -36,11 +36,6 @@ func (h OfflineHandler) CreateCampaign(c *gin.Context) {
 		return
 	}
 
-	if strings.TrimSpace(h.cfg.AI.OpenAIAPIKey) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "AI not configured"})
-		return
-	}
-
 	clientID, err := parseOptionalUUID(c.PostForm("client_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
@@ -84,6 +79,17 @@ func (h OfflineHandler) CreateCampaign(c *gin.Context) {
 	}
 	if err := h.db.Create(&row).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "save failed"})
+		return
+	}
+
+	if strings.TrimSpace(h.cfg.AI.OpenAIAPIKey) == "" {
+		c.JSON(http.StatusCreated, gin.H{
+			"id":        row.ID.String(),
+			"file_url":  up.URL,
+			"file_mime": mime,
+			"status":    "uploaded",
+			"data":      nil,
+		})
 		return
 	}
 

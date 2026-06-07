@@ -2,6 +2,7 @@ services:
   traefik:
     image: traefik:v3.5
     restart: unless-stopped
+    profiles: ["prod"]
     env_file:
       - .env
     ports:
@@ -68,6 +69,9 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - miniodata:/data
     networks:
@@ -76,21 +80,21 @@ services:
     labels:
       - traefik.enable=true
 
-      - traefik.http.routers.minio.rule=Host(`s3.${DOMAIN}`)
+      - traefik.http.routers.minio.rule=Host(`s3.${DOMAIN:-localhost}`)
       - traefik.http.routers.minio.entrypoints=web
       - traefik.http.routers.minio.middlewares=redirect-to-https@file
 
-      - traefik.http.routers.minio-sec.rule=Host(`s3.${DOMAIN}`)
+      - traefik.http.routers.minio-sec.rule=Host(`s3.${DOMAIN:-localhost}`)
       - traefik.http.routers.minio-sec.entrypoints=websecure
       - traefik.http.routers.minio-sec.tls=true
       - traefik.http.routers.minio-sec.tls.certresolver=letsencrypt
       - traefik.http.services.minio.loadbalancer.server.port=9000
 
-      - traefik.http.routers.minio-console.rule=Host(`minio.${DOMAIN}`)
+      - traefik.http.routers.minio-console.rule=Host(`minio.${DOMAIN:-localhost}`)
       - traefik.http.routers.minio-console.entrypoints=web
       - traefik.http.routers.minio-console.middlewares=redirect-to-https@file
 
-      - traefik.http.routers.minio-console-sec.rule=Host(`minio.${DOMAIN}`)
+      - traefik.http.routers.minio-console-sec.rule=Host(`minio.${DOMAIN:-localhost}`)
       - traefik.http.routers.minio-console-sec.entrypoints=websecure
       - traefik.http.routers.minio-console-sec.tls=true
       - traefik.http.routers.minio-console-sec.tls.certresolver=letsencrypt
@@ -114,9 +118,11 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       REDIS_ADDR: redis:6379
-      PUBLIC_BASE_URL: https://${DOMAIN}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
       MINIO_USE_SSL: "true"
       CHROME_BIN: /usr/bin/chromium
+    ports:
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -128,12 +134,12 @@ services:
     labels:
       - traefik.enable=true
 
-      - traefik.http.routers.api.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/r/`) || PathPrefix(`/healthz`))
+      - traefik.http.routers.api.rule=Host(`${DOMAIN:-localhost}`) && (PathPrefix(`/api`) || PathPrefix(`/r/`) || PathPrefix(`/healthz`))
       - traefik.http.routers.api.entrypoints=web
       - traefik.http.routers.api.middlewares=redirect-to-https@file
       - traefik.http.routers.api.priority=100
 
-      - traefik.http.routers.api-sec.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/r/`) || PathPrefix(`/healthz`))
+      - traefik.http.routers.api-sec.rule=Host(`${DOMAIN:-localhost}`) && (PathPrefix(`/api`) || PathPrefix(`/r/`) || PathPrefix(`/healthz`))
       - traefik.http.routers.api-sec.entrypoints=websecure
       - traefik.http.routers.api-sec.tls=true
       - traefik.http.routers.api-sec.tls.certresolver=letsencrypt
@@ -205,19 +211,21 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        VITE_API_TARGET: https://${DOMAIN}
+        VITE_API_TARGET: ${VITE_API_TARGET:-http://localhost:8080}
     restart: unless-stopped
+    ports:
+      - "3000:80"
     networks:
       - web
     labels:
       - traefik.enable=true
 
-      - traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.frontend.rule=Host(`${DOMAIN:-localhost}`)
       - traefik.http.routers.frontend.entrypoints=web
       - traefik.http.routers.frontend.middlewares=redirect-to-https@file
       - traefik.http.routers.frontend.priority=1
 
-      - traefik.http.routers.frontend-sec.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.frontend-sec.rule=Host(`${DOMAIN:-localhost}`)
       - traefik.http.routers.frontend-sec.entrypoints=websecure
       - traefik.http.routers.frontend-sec.tls=true
       - traefik.http.routers.frontend-sec.tls.certresolver=letsencrypt
